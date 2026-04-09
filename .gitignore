@@ -1,0 +1,17 @@
+# Xcode
+.DS_Store
+*.xcuserstate
+*.xcworkspace
+xcuserdata/
+*.moved-aside
+DerivedData/
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# CocoaPods
+# Pods/
+
+# Build logs
+Logs/
