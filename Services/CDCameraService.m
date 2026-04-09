@@ -31,13 +31,44 @@
 - (instancetype)init {
     self = [super init];
     if (self) {
-        _targetFrameRate = 30;
-        _whiteBalanceTemperature = 4500.0f;
-        _shutterDuration = CMTimeMake(1, 250);
-        _targetISO = 320.0f;
+        [self loadSettings];
         [self loadRecordedVideos];
+        [[NSNotificationCenter defaultCenter] addObserver:self
+                                                 selector:@selector(settingsDidChange:)
+                                                     name:@"CDCameraSettingsDidChange"
+                                                   object:nil];
     }
     return self;
+}
+
+- (void)loadSettings {
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    _targetFrameRate = [defaults integerForKey:@"CDSettingsFrameRate"];
+    if (_targetFrameRate == 0) _targetFrameRate = 30;
+
+    _whiteBalanceTemperature = [defaults floatForKey:@"CDSettingsWhiteBalance"];
+    if (_whiteBalanceTemperature == 0) _whiteBalanceTemperature = 4500.0f;
+
+    float shutterSpeed = [defaults floatForKey:@"CDSettingsShutterSpeed"];
+    if (shutterSpeed == 0) shutterSpeed = 250;
+    _shutterDuration = CMTimeMake(1, (int32_t)shutterSpeed);
+
+    _targetISO = [defaults floatForKey:@"CDSettingsISO"];
+    if (_targetISO == 0) _targetISO = 320.0f;
+}
+
+- (void)settingsDidChange:(NSNotification *)notification {
+    [self loadSettings];
+    // Reconfigure camera with new settings if session is running
+    if (self.captureSession && self.videoDevice) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self configureDevice:self.videoDevice];
+        });
+    }
+}
+
+- (void)dealloc {
+    [[NSNotificationCenter defaultCenter] removeObserver:self];
 }
 
 - (AVCaptureVideoPreviewLayer *)setupCamera {

@@ -1,6 +1,7 @@
 #import "CDCameraViewController.h"
 #import "CDCameraService.h"
 #import "CDVideoListViewController.h"
+#import "CDCameraSettingsViewController.h"
 #import <AVFoundation/AVFoundation.h>
 #import <QuartzCore/QuartzCore.h>
 
@@ -11,6 +12,7 @@
 @property (nonatomic, strong) UILabel *durationLabel;
 @property (nonatomic, strong) UIView *recordingIndicator;
 @property (nonatomic, strong) UIButton *recordButton;
+@property (nonatomic, strong) UIButton *settingsButton;
 @property (nonatomic, strong) UILabel *hintLabel;
 @property (nonatomic, strong) NSTimer *uiTimer;
 
@@ -58,6 +60,9 @@
     // Update duration/recording indicator positions
     self.durationLabel.frame = CGRectMake(self.view.bounds.size.width - 120, 25, 100, 30);
     self.recordingIndicator.frame = CGRectMake(self.view.bounds.size.width - 145, 32, 12, 12);
+
+    // Update settings button position
+    self.settingsButton.frame = CGRectMake(self.view.bounds.size.width - 50, 20, 30, 30);
 
 #if DEBUG
     if (self.recordButton) {
@@ -132,6 +137,15 @@
     self.recordingIndicator.layer.cornerRadius = 6;
     self.recordingIndicator.hidden = YES;
     [self.topBar addSubview:self.recordingIndicator];
+
+    // Settings Button
+    self.settingsButton = [UIButton buttonWithType:UIButtonTypeSystem];
+    self.settingsButton.frame = CGRectMake(self.view.bounds.size.width - 50, 20, 30, 30);
+    UIImage *gearImg = [UIImage systemImageNamed:@"gearshape.fill"];
+    [self.settingsButton setImage:gearImg forState:UIControlStateNormal];
+    self.settingsButton.tintColor = [UIColor whiteColor];
+    [self.settingsButton addTarget:self action:@selector(showSettings) forControlEvents:UIControlEventTouchUpInside];
+    [self.topBar addSubview:self.settingsButton];
 
     // Bottom Bar
     UIView *bottomBar = [[UIView alloc] initWithFrame:CGRectMake(0, self.view.bounds.size.height - 180, self.view.bounds.size.width, 180)];
@@ -269,6 +283,12 @@
 - (void)showVideoList {
     CDVideoListViewController *listVC = [[CDVideoListViewController alloc] init];
     UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:listVC];
+    [self presentViewController:nav animated:YES completion:nil];
+}
+
+- (void)showSettings {
+    CDCameraSettingsViewController *settingsVC = [[CDCameraSettingsViewController alloc] init];
+    UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:settingsVC];
     [self presentViewController:nav animated:YES completion:nil];
 }
 
