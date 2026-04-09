@@ -14,6 +14,7 @@
 @property (nonatomic, assign) float whiteBalanceTemperature;
 @property (nonatomic, assign) CMTime shutterDuration;
 @property (nonatomic, assign) float targetISO;
+@property (nonatomic, assign) NSInteger currentCameraLens;
 
 @end
 
@@ -55,16 +56,68 @@
 
     _targetISO = [defaults floatForKey:@"CDSettingsISO"];
     if (_targetISO == 0) _targetISO = 320.0f;
+
+    _currentCameraLens = [defaults integerForKey:@"CDSettingsCameraLens"];
 }
 
 - (void)settingsDidChange:(NSNotification *)notification {
+    NSInteger oldLens = self.currentCameraLens;
     [self loadSettings];
-    // Reconfigure camera with new settings if session is running
-    if (self.captureSession && self.videoDevice) {
+    NSInteger newLens = self.currentCameraLens;
+
+    if (oldLens != newLens) {
+        // Camera lens changed, need to reload camera
+        [self reloadCamera];
+    } else if (self.captureSession && self.videoDevice) {
         dispatch_async(dispatch_get_main_queue(), ^{
             [self configureDevice:self.videoDevice];
         });
     }
+}
+
+- (void)reloadCamera {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [self.captureSession stopRunning];
+
+        // Remove existing input
+        for (AVCaptureInput *input in self.captureSession.inputs) {
+            [self.captureSession removeInput:input];
+        }
+
+        // Find new device
+        AVCaptureDevice *newDevice = [self findCameraDevice];
+        if (!newDevice) {
+            NSLog(@"Error: cannot find camera device");
+            return;
+        }
+
+        NSLog(@"Switching to camera: %@", newDevice.localizedName);
+
+        NSError *error = nil;
+        AVCaptureDeviceInput *newInput = [AVCaptureDeviceInput deviceInputWithDevice:newDevice error:&error];
+        if (error) {
+            NSLog(@"Error creating input: %@", error.localizedDescription);
+            return;
+        }
+
+        [self.captureSession beginConfiguration];
+
+        if ([self.captureSession canAddInput:newInput]) {
+            [self.captureSession addInput:newInput];
+        }
+
+        [self.captureSession commitConfiguration];
+
+        self.videoDevice = newDevice;
+
+        [self.captureSession startRunning];
+
+        // Configure device after session starts
+        [self configureDevice:newDevice];
+
+        [[NSNotificationCenter defaultCenter] postNotificationName:@"CDCameraDidReload" object:nil];
+        NSLog(@"Camera reloaded with lens: %@", newDevice.localizedName);
+    });
 }
 
 - (void)dealloc {
@@ -84,14 +137,11 @@
         NSLog(@"Error: cannot find camera");
         return nil;
     }
-    self.videoDevice = device;
-
-    [self configureDevice:device];
 
     NSError *error = nil;
     AVCaptureDeviceInput *input = [AVCaptureDeviceInput deviceInputWithDevice:device error:&error];
     if (error) {
-        NSLog(@"Error adding input: %@", error.localizedDescription);
+        NSLog(@"Error creating input: %@", error.localizedDescription);
         return nil;
     }
     if ([session canAddInput:input]) {
@@ -102,9 +152,13 @@
     if ([session canAddOutput:output]) {
         [session addOutput:output];
     }
-    self.videoOutput = output;
 
     [session commitConfiguration];
+
+    // Configure device AFTER adding to session
+    self.videoDevice = device;
+    [self configureDevice:device];
+    self.videoOutput = output;
 
     AVCaptureVideoPreviewLayer *preview = [AVCaptureVideoPreviewLayer layerWithSession:session];
     preview.videoGravity = AVLayerVideoGravityResizeAspectFill;
@@ -121,18 +175,20 @@
 - (AVCaptureDevice *)findCameraDevice {
     AVCaptureDevice *device = nil;
 
-    // Try to find ultra-wide camera (0.5x)
-    AVCaptureDeviceDiscoverySession *discovery = [AVCaptureDeviceDiscoverySession
-        discoverySessionWithDeviceTypes:@[AVCaptureDeviceTypeBuiltInUltraWideCamera]
-        mediaType:AVMediaTypeVideo
-        position:AVCaptureDevicePositionBack];
+    if (self.currentCameraLens == 0) {
+        // Ultra-wide camera (0.5x)
+        AVCaptureDeviceDiscoverySession *discovery = [AVCaptureDeviceDiscoverySession
+            discoverySessionWithDeviceTypes:@[AVCaptureDeviceTypeBuiltInUltraWideCamera]
+            mediaType:AVMediaTypeVideo
+            position:AVCaptureDevicePositionBack];
 
-    if (discovery.devices.count > 0) {
-        device = discovery.devices.firstObject;
-        NSLog(@"Found ultra-wide camera: %@", device.localizedName);
+        if (discovery.devices.count > 0) {
+            device = discovery.devices.firstObject;
+            NSLog(@"Found ultra-wide camera: %@", device.localizedName);
+        }
     }
 
-    // Fallback to wide-angle camera
+    // Fallback or wide-angle (1.0x)
     if (!device) {
         device = [AVCaptureDevice defaultDeviceWithDeviceType:AVCaptureDeviceTypeBuiltInWideAngleCamera
                                                     mediaType:AVMediaTypeVideo
@@ -144,9 +200,11 @@
 }
 
 - (void)configureDevice:(AVCaptureDevice *)device {
+    if (!device) return;
+
     NSError *error = nil;
-    [device lockForConfiguration:&error];
-    if (error) {
+    BOOL locked = [device lockForConfiguration:&error];
+    if (error || !locked) {
         NSLog(@"lockForConfiguration error: %@", error.localizedDescription);
         return;
     }
@@ -180,14 +238,18 @@
         [device setWhiteBalanceModeLockedWithDeviceWhiteBalanceGains:gains completionHandler:nil];
     }
 
-    // Lock focus
-    if ([device isFocusModeSupported:AVCaptureFocusModeLocked]) {
+    // Use continuous auto focus for better clarity
+    if ([device isFocusModeSupported:AVCaptureFocusModeContinuousAutoFocus]) {
+        device.focusMode = AVCaptureFocusModeContinuousAutoFocus;
+    } else if ([device isFocusModeSupported:AVCaptureFocusModeAutoFocus]) {
+        device.focusMode = AVCaptureFocusModeAutoFocus;
+    } else if ([device isFocusModeSupported:AVCaptureFocusModeLocked]) {
         device.focusMode = AVCaptureFocusModeLocked;
     }
 
     [device unlockForConfiguration];
 
-    NSLog(@"Camera configured: 1920x1080, %dfps, WB=%.0fK, ISO=%.0f",
+    NSLog(@"Camera configured: 1920x1080, %dfps, WB=%.0fK, ISO:%.0f",
           self.targetFrameRate, self.whiteBalanceTemperature, iso);
 }
 

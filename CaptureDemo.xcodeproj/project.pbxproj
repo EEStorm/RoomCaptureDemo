@@ -29,6 +29,7 @@
 		8494A71F0472D1883844ADBF /* VideoPoseRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4DA18D87E38BC24A965D6B8 /* VideoPoseRecorder.swift */; };
 		854EAB2947327BAD6A396D01 /* SceneKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 9888C204A6582D5AD79F52E2 /* SceneKit.framework */; };
 		88B46FF30AA696AAF97EFA50 /* CameraPoseSample.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3DB3A5C7D258DE23C4E726C /* CameraPoseSample.swift */; };
+		959F756DE664F508525632D6 /* CDCameraSettingsViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = 423CA50CC27C68F3DB672107 /* CDCameraSettingsViewController.m */; };
 		9DBF5A13AD5F385CC6AE856A /* AppDelegate.m in Sources */ = {isa = PBXBuildFile; fileRef = 77CD7CCFEA220FCED7278D95 /* AppDelegate.m */; };
 		A0C80FEFE09A046D07097C9B /* AVFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = F5E01EBE98B32559E14C00B8 /* AVFoundation.framework */; };
 		A1B1721A90DF5E79B6917772 /* CoreMedia.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4BD7C5EB5BF95A993502A248 /* CoreMedia.framework */; };
@@ -55,10 +56,12 @@
 		37F8F36807E29CE39A3CF2D9 /* PointCloudAccumulator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PointCloudAccumulator.swift; sourceTree = "<group>"; };
 		3CB574BA545BB9F800753E62 /* CDCameraViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = CDCameraViewController.h; sourceTree = "<group>"; };
 		40BC1B8AE0DEA7412230DF03 /* main.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = main.m; sourceTree = "<group>"; };
+		423CA50CC27C68F3DB672107 /* CDCameraSettingsViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = CDCameraSettingsViewController.m; sourceTree = "<group>"; };
 		4BD7C5EB5BF95A993502A248 /* CoreMedia.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreMedia.framework; path = System/Library/Frameworks/CoreMedia.framework; sourceTree = SDKROOT; };
 		516166F25DC1DCDB3317767E /* RenderMode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RenderMode.swift; sourceTree = "<group>"; };
 		55DF6A06A19924BA8F800B53 /* PlaneCoveragePainter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaneCoveragePainter.swift; sourceTree = "<group>"; };
 		5BA094D6CB787297F110D80A /* CaptureSessionModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureSessionModel.swift; sourceTree = "<group>"; };
+		643D08CFF99EF83A5EE8D712 /* CDCameraSettingsViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = CDCameraSettingsViewController.h; sourceTree = "<group>"; };
 		6CDCD57447AA713C8F6BF9A8 /* CaptureDemo.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CaptureDemo.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		6E2A5FE56765810AF9D06E52 /* MeshReviewSceneBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeshReviewSceneBuilder.swift; sourceTree = "<group>"; };
 		722E019B120619A3435F8446 /* CDStereoCameraViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = CDStereoCameraViewController.m; sourceTree = "<group>"; };
@@ -236,6 +239,8 @@
 		D6D36B346709D0DB3CE21AEB /* ViewControllers */ = {
 			isa = PBXGroup;
 			children = (
+				643D08CFF99EF83A5EE8D712 /* CDCameraSettingsViewController.h */,
+				423CA50CC27C68F3DB672107 /* CDCameraSettingsViewController.m */,
 				5A02F2729CBE5766D608A385 /* Common */,
 				F5821BF82A1702FA6EE61A84 /* MainTabs */,
 				C70A8CEFB3620C5C7D5BDDC4 /* MeshCamera */,
@@ -351,6 +356,7 @@
 				4E521DE7D962F3945DEBE355 /* ARSCNViewContainer.swift in Sources */,
 				9DBF5A13AD5F385CC6AE856A /* AppDelegate.m in Sources */,
 				3D38B0DDB5BCBA64EC3BA2B1 /* CDCameraService.m in Sources */,
+				959F756DE664F508525632D6 /* CDCameraSettingsViewController.m in Sources */,
 				DB2B3DA81A4423EAE02B2FDF /* CDCameraViewController.m in Sources */,
 				145DADD88275BB22C8EF0117 /* CDFeatureHomeViewController.m in Sources */,
 				527B150E25EE34903877876E /* CDMainTabBarController.m in Sources */,

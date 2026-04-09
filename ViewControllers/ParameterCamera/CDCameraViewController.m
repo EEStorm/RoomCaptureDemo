@@ -1,6 +1,7 @@
 #import "CDCameraViewController.h"
 #import "CDCameraService.h"
 #import "CDVideoListViewController.h"
+#import "CDCameraSettingsViewController.h"
 #import <AVFoundation/AVFoundation.h>
 #import <QuartzCore/QuartzCore.h>
 
@@ -9,8 +10,11 @@
 @property (nonatomic, strong) AVCaptureVideoPreviewLayer *previewLayer;
 @property (nonatomic, strong) UIView *topBar;
 @property (nonatomic, strong) UILabel *durationLabel;
+@property (nonatomic, strong) UILabel *paramsLabel;
 @property (nonatomic, strong) UIView *recordingIndicator;
 @property (nonatomic, strong) UIButton *recordButton;
+@property (nonatomic, strong) UIButton *settingsButton;
+@property (nonatomic, strong) UIButton *backButton;
 @property (nonatomic, strong) UILabel *hintLabel;
 @property (nonatomic, strong) NSTimer *uiTimer;
 
@@ -24,10 +28,38 @@
     self.view.backgroundColor = [UIColor blackColor];
     [self setupUI];
     [self setupCamera];
+
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(settingsDidChange)
+                                                 name:@"CDCameraSettingsDidChange"
+                                               object:nil];
+
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(cameraDidReload)
+                                                 name:@"CDCameraDidReload"
+                                               object:nil];
+}
+
+- (void)dealloc {
+    [[NSNotificationCenter defaultCenter] removeObserver:self];
+}
+
+- (void)settingsDidChange {
+    [self updateSettingsLabels];
+}
+
+- (void)cameraDidReload {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        UIView *previewContainer = [self.view viewWithTag:100];
+        self.previewLayer.frame = previewContainer.bounds;
+    });
 }
 
 - (void)viewDidLayoutSubviews {
     [super viewDidLayoutSubviews];
+
+    CGFloat safeTop = self.view.safeAreaInsets.top;
+    CGFloat screenWidth = self.view.bounds.size.width;
 
     // Update previewContainer frame
     UIView *previewContainer = [self.view viewWithTag:100];
@@ -37,7 +69,28 @@
     self.previewLayer.frame = previewContainer.bounds;
 
     // Update topBar frame
-    self.topBar.frame = CGRectMake(0, 0, self.view.bounds.size.width, 100);
+    self.topBar.frame = CGRectMake(0, safeTop, screenWidth, 100);
+
+    // Update center container frame
+    UIView *centerContainer = self.topBar.subviews.count > 2 ? self.topBar.subviews[2] : nil;
+    if (centerContainer) {
+        centerContainer.frame = CGRectMake(60, 20, screenWidth - 120, 60);
+        UILabel *resLabel = [centerContainer viewWithTag:300];
+        if (resLabel) {
+            resLabel.frame = CGRectMake(0, 0, centerContainer.bounds.size.width, 25);
+        }
+        self.paramsLabel.frame = CGRectMake(0, 28, centerContainer.bounds.size.width, 25);
+    }
+
+    // Update back button position
+    self.backButton.frame = CGRectMake(16, 35, 30, 30);
+
+    // Update settings button position
+    self.settingsButton.frame = CGRectMake(screenWidth - 46, 35, 30, 30);
+
+    // Update duration/recording indicator positions
+    self.durationLabel.frame = CGRectMake(screenWidth - 120, 64, 90, 24);
+    self.recordingIndicator.frame = CGRectMake(screenWidth - 28, 70, 12, 12);
 
     // Update bottomBar frame
     UIView *bottomBar = [self.view viewWithTag:200];
@@ -45,20 +98,15 @@
         bottomBar = [self.view.subviews lastObject];
     }
     if (bottomBar) {
-        bottomBar.frame = CGRectMake(0, self.view.bounds.size.height - 180, self.view.bounds.size.width, 180);
+        bottomBar.frame = CGRectMake(0, self.view.bounds.size.height - 180, screenWidth, 180);
 
         // Update recordButton position
         if (self.recordButton) {
-            CGFloat screenWidth = self.view.bounds.size.width;
             CGFloat btnSize = 80;
             CGFloat btnX = (screenWidth - btnSize) / 2;
             self.recordButton.frame = CGRectMake(btnX, 50, btnSize, btnSize);
         }
     }
-
-    // Update duration/recording indicator positions
-    self.durationLabel.frame = CGRectMake(self.view.bounds.size.width - 120, 25, 100, 30);
-    self.recordingIndicator.frame = CGRectMake(self.view.bounds.size.width - 145, 32, 12, 12);
 
 #if DEBUG
     if (self.recordButton) {
@@ -81,6 +129,7 @@
     [self.navigationController setNavigationBarHidden:YES animated:animated];
     [[CDCameraService shared] startSession];
     [self startUITimer];
+    [self updateSettingsLabels];
 }
 
 - (void)viewWillDisappear:(BOOL)animated {
@@ -95,6 +144,9 @@
 }
 
 - (void)setupUI {
+    CGFloat safeTop = self.view.safeAreaInsets.top;
+    CGFloat screenWidth = self.view.bounds.size.width;
+
     // Preview Container
     UIView *previewContainer = [[UIView alloc] init];
     previewContainer.frame = self.view.bounds;
@@ -102,47 +154,73 @@
     previewContainer.tag = 100;
     [self.view addSubview:previewContainer];
 
-    // Top Bar
-    self.topBar = [[UIView alloc] initWithFrame:CGRectMake(0, 0, self.view.bounds.size.width, 100)];
+    // Top Bar - below safe area
+    self.topBar = [[UIView alloc] initWithFrame:CGRectMake(0, safeTop, screenWidth, 100)];
     [self.view addSubview:self.topBar];
 
-    // Resolution Label
-    UILabel *resLabel = [[UILabel alloc] initWithFrame:CGRectMake(16, 20, 100, 25)];
+    // Back Button - left side, vertically centered in top bar
+    self.backButton = [UIButton buttonWithType:UIButtonTypeSystem];
+    self.backButton.frame = CGRectMake(16, 35, 30, 30);
+    UIImage *backImg = [UIImage systemImageNamed:@"chevron.left"];
+    [self.backButton setImage:backImg forState:UIControlStateNormal];
+    self.backButton.tintColor = [UIColor whiteColor];
+    [self.backButton addTarget:self action:@selector(goBack) forControlEvents:UIControlEventTouchUpInside];
+    [self.topBar addSubview:self.backButton];
+
+    // Settings Button - right side, vertically centered in top bar
+    self.settingsButton = [UIButton buttonWithType:UIButtonTypeSystem];
+    self.settingsButton.frame = CGRectMake(screenWidth - 46, 35, 30, 30);
+    UIImage *gearImg = [UIImage systemImageNamed:@"gearshape.fill"];
+    [self.settingsButton setImage:gearImg forState:UIControlStateNormal];
+    self.settingsButton.tintColor = [UIColor whiteColor];
+    [self.settingsButton addTarget:self action:@selector(showSettings) forControlEvents:UIControlEventTouchUpInside];
+    [self.topBar addSubview:self.settingsButton];
+
+    // Center container for labels
+    UIView *centerContainer = [[UIView alloc] init];
+    centerContainer.frame = CGRectMake(60, 20, screenWidth - 120, 60);
+    [self.topBar addSubview:centerContainer];
+
+    // Resolution Label - top center
+    UILabel *resLabel = [[UILabel alloc] initWithFrame:CGRectMake(0, 0, centerContainer.bounds.size.width, 25)];
     resLabel.text = @"1080P 30fps";
     resLabel.textColor = [UIColor whiteColor];
     resLabel.font = [UIFont boldSystemFontOfSize:14];
-    [self.topBar addSubview:resLabel];
+    resLabel.textAlignment = NSTextAlignmentCenter;
+    resLabel.tag = 300;
+    [centerContainer addSubview:resLabel];
 
-    // Params Label
-    UILabel *paramsLabel = [[UILabel alloc] initWithFrame:CGRectMake(16, 50, 250, 40)];
-    paramsLabel.text = @"0.5x广角 | 4500K | 1/250 | ISO320";
-    paramsLabel.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.8];
-    paramsLabel.font = [UIFont systemFontOfSize:12];
-    [self.topBar addSubview:paramsLabel];
+    // Params Label - below resolution
+    self.paramsLabel = [[UILabel alloc] initWithFrame:CGRectMake(0, 28, centerContainer.bounds.size.width, 25)];
+    self.paramsLabel.text = @"0.5x广角 | 4500K | 1/250 | ISO320";
+    self.paramsLabel.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.8];
+    self.paramsLabel.font = [UIFont systemFontOfSize:12];
+    self.paramsLabel.textAlignment = NSTextAlignmentCenter;
+    [centerContainer addSubview:self.paramsLabel];
 
-    // Duration Label
-    self.durationLabel = [[UILabel alloc] initWithFrame:CGRectMake(self.view.bounds.size.width - 120, 25, 100, 30)];
-    self.durationLabel.text = @"00:00.0";
-    self.durationLabel.textColor = [UIColor whiteColor];
-    self.durationLabel.font = [UIFont monospacedDigitSystemFontOfSize:18 weight:UIFontWeightMedium];
-    self.durationLabel.textAlignment = NSTextAlignmentRight;
-    self.durationLabel.hidden = YES;
-    [self.topBar addSubview:self.durationLabel];
-
-    // Recording Indicator
-    self.recordingIndicator = [[UIView alloc] initWithFrame:CGRectMake(self.view.bounds.size.width - 145, 32, 12, 12)];
+    // Recording Indicator - right side
+    self.recordingIndicator = [[UIView alloc] initWithFrame:CGRectMake(screenWidth - 28, 70, 12, 12)];
     self.recordingIndicator.backgroundColor = [UIColor redColor];
     self.recordingIndicator.layer.cornerRadius = 6;
     self.recordingIndicator.hidden = YES;
     [self.topBar addSubview:self.recordingIndicator];
 
+    // Duration Label - left of recording indicator
+    self.durationLabel = [[UILabel alloc] initWithFrame:CGRectMake(screenWidth - 120, 64, 90, 24)];
+    self.durationLabel.text = @"00:00.0";
+    self.durationLabel.textColor = [UIColor whiteColor];
+    self.durationLabel.font = [UIFont monospacedDigitSystemFontOfSize:16 weight:UIFontWeightMedium];
+    self.durationLabel.textAlignment = NSTextAlignmentRight;
+    self.durationLabel.hidden = YES;
+    [self.topBar addSubview:self.durationLabel];
+
     // Bottom Bar
-    UIView *bottomBar = [[UIView alloc] initWithFrame:CGRectMake(0, self.view.bounds.size.height - 180, self.view.bounds.size.width, 180)];
+    UIView *bottomBar = [[UIView alloc] initWithFrame:CGRectMake(0, self.view.bounds.size.height - 180, screenWidth, 180)];
     bottomBar.tag = 200;
     [self.view addSubview:bottomBar];
 
     // Hint Label
-    self.hintLabel = [[UILabel alloc] initWithFrame:CGRectMake(0, 20, self.view.bounds.size.width, 20)];
+    self.hintLabel = [[UILabel alloc] initWithFrame:CGRectMake(0, 20, screenWidth, 20)];
     self.hintLabel.text = @"点击录制按钮开始采集";
     self.hintLabel.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.8];
     self.hintLabel.font = [UIFont systemFontOfSize:13];
@@ -161,11 +239,10 @@
     [bottomBar addSubview:listBtn];
 
     // Record Button
-    self.recordButton = [UIButton buttonWithType:UIButtonTypeCustom];
-    CGFloat screenWidth = self.view.bounds.size.width;
     CGFloat btnSize = 80;
     CGFloat btnX = (screenWidth - btnSize) / 2;
     CGFloat btnY = 50;
+    self.recordButton = [UIButton buttonWithType:UIButtonTypeCustom];
     self.recordButton.frame = CGRectMake(btnX, btnY, btnSize, btnSize);
     self.recordButton.layer.borderWidth = 4;
     self.recordButton.layer.borderColor = [UIColor whiteColor].CGColor;
@@ -201,8 +278,8 @@
     self.uiTimer = [NSTimer scheduledTimerWithTimeInterval:0.1
                                                      target:self
                                                    selector:@selector(updateUI)
-                                                   userInfo:nil
-                                                    repeats:YES];
+                                                 userInfo:nil
+                                                  repeats:YES];
 }
 
 - (void)stopUITimer {
@@ -258,6 +335,31 @@
     [self.recordButton.layer addSublayer:innerLayer];
 }
 
+- (void)updateSettingsLabels {
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+
+    // Update resolution & fps label
+    UILabel *resLabel = [self.topBar viewWithTag:300];
+    NSInteger resolution = [defaults integerForKey:@"CDSettingsResolution"];
+    NSArray *resolutions = @[@"720P", @"1080P", @"4K"];
+    NSInteger frameRate = [defaults integerForKey:@"CDSettingsFrameRate"];
+    if (frameRate == 0) frameRate = 30;
+    resLabel.text = [NSString stringWithFormat:@"%@ %ldfps", resolutions[resolution], (long)frameRate];
+
+    // Update params label
+    NSInteger cameraLens = [defaults integerForKey:@"CDSettingsCameraLens"];
+    NSArray *lensNames = @[@"0.5x广角", @"1.0x广角"];
+    float whiteBalance = [defaults floatForKey:@"CDSettingsWhiteBalance"];
+    if (whiteBalance == 0) whiteBalance = 4500;
+    float shutterSpeed = [defaults floatForKey:@"CDSettingsShutterSpeed"];
+    if (shutterSpeed == 0) shutterSpeed = 250;
+    float iso = [defaults floatForKey:@"CDSettingsISO"];
+    if (iso == 0) iso = 320;
+
+    self.paramsLabel.text = [NSString stringWithFormat:@"%@ | %.0fK | 1/%.0f | ISO%.0f",
+                             lensNames[cameraLens], whiteBalance, shutterSpeed, iso];
+}
+
 - (void)toggleRecording {
     NSLog(@"toggleRecording called");
     if ([[CDCameraService shared] isRecording]) {
@@ -269,9 +371,19 @@
     }
 }
 
+- (void)goBack {
+    [self.navigationController popViewControllerAnimated:YES];
+}
+
 - (void)showVideoList {
     CDVideoListViewController *listVC = [[CDVideoListViewController alloc] init];
     UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:listVC];
+    [self presentViewController:nav animated:YES completion:nil];
+}
+
+- (void)showSettings {
+    CDCameraSettingsViewController *settingsVC = [[CDCameraSettingsViewController alloc] init];
+    UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:settingsVC];
     [self presentViewController:nav animated:YES completion:nil];
 }
 
