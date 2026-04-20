@@ -10,6 +10,8 @@ import Combine
 import UIKit
 
 struct ContentView: View {
+    let onShowCaptureList: () -> Void
+
     @StateObject private var model = CaptureSessionModel()
     @State private var blink = false
 
@@ -160,35 +162,34 @@ struct ContentView: View {
                         .disabled(!model.isRecording)
                     }
 
-                    // “分析”入口：采集停止 -> 打包 ZIP -> 用户点击分析（唤起系统分享/导出）
-                    if model.isPackaging || model.exportZipURL != nil {
-                        HStack(spacing: 12) {
-                            Button {
-                                model.presentAnalysis()
-                            } label: {
-                                Text(model.isPackaging ? "打包中…" : "分析")
-                                    .font(.subheadline.weight(.semibold))
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 12)
-                                    .background(model.isPackaging ? Color.gray : Color.blue)
-                                    .foregroundStyle(.white)
-                                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                            }
-                            .disabled(model.isPackaging || model.exportZipURL == nil)
-
-                            Button {
-                                model.isReviewPresented = true
-                            } label: {
-                                Text(model.isGeneratingReview ? "生成效果…" : "查看效果")
-                                    .font(.subheadline.weight(.semibold))
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 12)
-                                    .background(model.isGeneratingReview ? Color.gray : Color.indigo)
-                                    .foregroundStyle(.white)
-                                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                            }
-                            .disabled(model.isGeneratingReview && model.reviewPayload == nil)
+                    if model.isPackaging || model.reviewPayload != nil || model.isGeneratingReview {
+                        Button {
+                            model.isReviewPresented = true
+                        } label: {
+                            Text(model.isGeneratingReview ? "生成效果…" : "查看效果")
+                                .font(.subheadline.weight(.semibold))
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 12)
+                                .background(model.isGeneratingReview ? Color.gray : Color.indigo)
+                                .foregroundStyle(.white)
+                                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                         }
+                        .disabled(model.isGeneratingReview && model.reviewPayload == nil)
+                    }
+
+                    Button {
+                        onShowCaptureList()
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "tray.full.fill")
+                            Text("下载列表")
+                        }
+                        .font(.subheadline.weight(.semibold))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(Color.blue.opacity(0.92))
+                        .foregroundStyle(.white)
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                     }
 
                     if let lastExport = model.lastExportSummary {
@@ -221,14 +222,6 @@ struct ContentView: View {
                 blink = false
             }
         }
-        .sheet(isPresented: $model.isShareSheetPresented) {
-            if let url = model.exportZipURL {
-                ActivityView(activityItems: [url])
-            } else {
-                Text("没有可分析的 ZIP")
-                    .padding()
-            }
-        }
         .sheet(isPresented: $model.isReviewPresented) {
             if let payload = model.reviewPayload {
                 CaptureReviewView(payload: payload)
@@ -249,24 +242,6 @@ struct ContentView: View {
 
 struct ContentView_Previews: PreviewProvider {
     static var previews: some View {
-        ContentView()
+        ContentView(onShowCaptureList: {})
     }
-}
-
-private struct ActivityView: UIViewControllerRepresentable {
-    let activityItems: [Any]
-    var applicationActivities: [UIActivity]? = nil
-
-    func makeUIViewController(context: Context) -> UIActivityViewController {
-        let controller = UIActivityViewController(activityItems: activityItems, applicationActivities: applicationActivities)
-        // iPad requires an anchor for popovers; make it safe by default.
-        if let popover = controller.popoverPresentationController {
-            popover.sourceView = controller.view
-            popover.sourceRect = CGRect(x: controller.view.bounds.midX, y: controller.view.bounds.midY, width: 1, height: 1)
-            popover.permittedArrowDirections = []
-        }
-        return controller
-    }
-
-    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }

@@ -51,7 +51,7 @@ struct CaptureReviewView: View {
                     Text(payload.exportFolderURL.lastPathComponent)
                         .font(.footnote)
                         .foregroundStyle(.secondary)
-                    Text("文件：\(payload.videoURL.lastPathComponent), \(payload.jsonURL.lastPathComponent), \(payload.zipURL.lastPathComponent)")
+                    Text("文件：\(fileNames.joined(separator: ", "))")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
@@ -61,6 +61,14 @@ struct CaptureReviewView: View {
             .navigationTitle("采集效果")
             .navigationBarTitleDisplayMode(.inline)
         }
+    }
+
+    private var fileNames: [String] {
+        var names = [payload.videoURL.lastPathComponent, payload.jsonURL.lastPathComponent]
+        if let objName = payload.meshExport?.objURL.lastPathComponent {
+            names.append(objName)
+        }
+        return names
     }
 }
 

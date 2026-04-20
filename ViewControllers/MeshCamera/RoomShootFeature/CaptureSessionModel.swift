@@ -32,8 +32,6 @@ final class CaptureSessionModel: ObservableObject {
 
     @Published var lastExportSummary: String?
     @Published var isPackaging: Bool = false
-    @Published var exportZipURL: URL?
-    @Published var isShareSheetPresented: Bool = false
 
     // Review (post-capture QA/coverage/3D preview) – LiDAR focus.
     @Published var isReviewPresented: Bool = false
@@ -73,8 +71,6 @@ final class CaptureSessionModel: ObservableObject {
         guard !isRecording else { return }
         lastExportSummary = nil
         isPackaging = false
-        exportZipURL = nil
-        isShareSheetPresented = false
         recorder.startNewRecording()
         isRecording = true
         UIApplication.shared.isIdleTimerDisabled = true
@@ -85,8 +81,6 @@ final class CaptureSessionModel: ObservableObject {
         isRecording = false
         UIApplication.shared.isIdleTimerDisabled = false
         isPackaging = true
-        exportZipURL = nil
-        isShareSheetPresented = false
 
         recorder.stop { [weak self] result in
             Task { @MainActor in
@@ -97,14 +91,10 @@ final class CaptureSessionModel: ObservableObject {
                     已保存:
                     \(export.videoURL.lastPathComponent)
                     \(export.jsonURL.lastPathComponent)
-                    \(export.zipURL.lastPathComponent)
                     \(export.folderURL.path)
                     """
                     print("Video saved at: \(export.videoURL.path)")
                     print("Pose JSON saved at: \(export.jsonURL.path)")
-                    print("ZIP saved at: \(export.zipURL.path)")
-                    // Let user explicitly tap “分析” after capture completes.
-                    self?.exportZipURL = export.zipURL
 
                     // Kick off on-device review generation (acceptable slight wait).
                     await self?.startGeneratingReview(export: export)
@@ -114,11 +104,6 @@ final class CaptureSessionModel: ObservableObject {
                 }
             }
         }
-    }
-
-    func presentAnalysis() {
-        guard exportZipURL != nil else { return }
-        isShareSheetPresented = true
     }
 
     func handleMotion(linearSpeed: Double, angularSpeed: Double, isTooFast: Bool) {
@@ -158,7 +143,6 @@ final class CaptureSessionModel: ObservableObject {
                 exportFolderURL: export.folderURL,
                 videoURL: export.videoURL,
                 jsonURL: export.jsonURL,
-                zipURL: export.zipURL,
                 qa: qa,
                 meshSnapshot: nil,
                 meshExport: nil
@@ -183,7 +167,6 @@ final class CaptureSessionModel: ObservableObject {
                 exportFolderURL: export.folderURL,
                 videoURL: export.videoURL,
                 jsonURL: export.jsonURL,
-                zipURL: export.zipURL,
                 qa: fallback,
                 meshSnapshot: nil,
                 meshExport: nil
@@ -200,8 +183,9 @@ final class CaptureSessionModel: ObservableObject {
 
     func handleReviewMeshExport(objURL: URL, anchorCount: Int, vertexCount: Int, faceCount: Int) {
         pendingReviewMeshExport = MeshExportInfo(objURL: objURL, vertexCount: vertexCount, faceCount: faceCount, anchorCount: anchorCount)
-        // After we have OBJ, re-package zip to include the OBJ (no preview images).
-        Task { await self.rezipWithOBJIfPossible() }
+        if let summary = lastExportSummary, !summary.contains("mesh.obj") {
+            lastExportSummary = summary + "\nmesh.obj"
+        }
         tryFinalizeReviewIfPossible()
     }
 
@@ -218,32 +202,6 @@ final class CaptureSessionModel: ObservableObject {
         // Consider review “ready” once we have QA + (snapshot OR mesh export).
         if pendingReviewSnapshot != nil || pendingReviewMeshExport != nil {
             isGeneratingReview = false
-        }
-    }
-
-    private func rezipWithOBJIfPossible() async {
-        guard let export = pendingExportForReview else { return }
-        guard let mesh = pendingReviewMeshExport else { return }
-
-        do {
-            // Re-package the zip to include mesh OBJ only (per requirement).
-            try await Task.detached(priority: .userInitiated) {
-                try ReviewZipPackager.repackageZip(
-                    export: export,
-                    extraFiles: [mesh.objURL]
-                )
-            }.value
-
-            await MainActor.run {
-                self.exportZipURL = export.zipURL
-                if let summary = self.lastExportSummary {
-                    if !summary.contains("mesh.obj") {
-                        self.lastExportSummary = summary + "\nmesh.obj"
-                    }
-                }
-            }
-        } catch {
-            print("Rezip with OBJ failed: \(error)")
         }
     }
 

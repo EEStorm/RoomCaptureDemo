@@ -15,7 +15,6 @@ final class VideoPoseRecorder {
         let folderURL: URL
         let videoURL: URL
         let jsonURL: URL
-        let zipURL: URL
     }
 
     enum RecorderError: Error {
@@ -94,20 +93,7 @@ final class VideoPoseRecorder {
                     let data = try encoder.encode(self.poses)
                     try data.write(to: jsonURL, options: [.atomic])
 
-                    // Package results into a zip for easy export/share.
-                    let zipURL = folderURL.deletingLastPathComponent()
-                        .appendingPathComponent(folderURL.lastPathComponent + ".zip")
-                    let base = folderURL.deletingLastPathComponent()
-                    let parent = folderURL.lastPathComponent
-                    try SimpleZipWriter.createZip(
-                        at: zipURL,
-                        entries: [
-                            .init(fileURL: videoURL, pathInZip: "\(parent)/\(videoURL.lastPathComponent)"),
-                            .init(fileURL: jsonURL, pathInZip: "\(parent)/\(jsonURL.lastPathComponent)"),
-                        ]
-                    )
-
-                    completion(.success(ExportResult(folderURL: folderURL, videoURL: videoURL, jsonURL: jsonURL, zipURL: zipURL)))
+                    completion(.success(ExportResult(folderURL: folderURL, videoURL: videoURL, jsonURL: jsonURL)))
                 } catch {
                     completion(.failure(error))
                 }

@@ -60,3 +60,17 @@ targets:
         NSCameraUsageDescription: "采集高质量视频素材用于3D重建"
         NSMicrophoneUsageDescription: "录制环境声音"
         NSPhotoLibraryAddUsageDescription: "保存多镜头录制视频到系统相册"
+
+  CaptureDemoTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: CaptureDemoTests
+    dependencies:
+      - target: CaptureDemo
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.captureDemoTests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/CaptureDemo.app/CaptureDemo"
+        BUNDLE_LOADER: "$(TEST_HOST)"

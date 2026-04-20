@@ -36,10 +36,8 @@ struct CaptureReviewPayload: Equatable {
     var exportFolderURL: URL
     var videoURL: URL
     var jsonURL: URL
-    var zipURL: URL
 
     var qa: CaptureQAStats
     var meshSnapshot: UIImage?
     var meshExport: MeshExportInfo?
 }
-
