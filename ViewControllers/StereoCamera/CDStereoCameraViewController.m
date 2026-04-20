@@ -1,4 +1,5 @@
 #import "CDStereoCameraViewController.h"
+#import "CDStereoCameraSettingsViewController.h"
 #import <AVFoundation/AVFoundation.h>
 #import <Photos/Photos.h>
 
@@ -16,6 +17,14 @@
 @implementation CDStereoCameraChannel
 @end
 
+@interface CDStereoFinishedRecording : NSObject
+@property (nonatomic, strong) NSURL *sourceURL;
+@property (nonatomic, copy) NSString *displayName;
+@end
+
+@implementation CDStereoFinishedRecording
+@end
+
 @interface CDStereoCameraViewController () <AVCaptureFileOutputRecordingDelegate>
 
 @property (nonatomic, strong) AVCaptureMultiCamSession *session;
@@ -23,8 +32,12 @@
 @property (nonatomic, strong) NSMutableArray<CDStereoCameraChannel *> *channels;
 @property (nonatomic, strong) UIView *previewContainer;
 @property (nonatomic, strong) UIButton *backButton;
+@property (nonatomic, strong) UIButton *settingsButton;
+@property (nonatomic, strong) UIButton *libraryButton;
 @property (nonatomic, strong) UILabel *titleLabel;
 @property (nonatomic, strong) UILabel *statusLabel;
+@property (nonatomic, strong) UILabel *captureInfoLabel;
+@property (nonatomic, strong) UILabel *paramsLabel;
 @property (nonatomic, strong) UIButton *recordButton;
 @property (nonatomic, strong) UILabel *recordHintLabel;
 @property (nonatomic, strong) UILabel *durationLabel;
@@ -34,12 +47,16 @@
 @property (nonatomic, assign) BOOL isRecording;
 @property (nonatomic, assign) NSTimeInterval recordingStartedAt;
 @property (nonatomic, assign) NSInteger pendingStops;
-@property (nonatomic, strong) NSMutableArray<NSURL *> *finishedRecordingURLs;
+@property (nonatomic, strong) NSMutableArray<CDStereoFinishedRecording *> *finishedRecordings;
 @property (nonatomic, strong) dispatch_queue_t exportQueue;
 
 @end
 
 @implementation CDStereoCameraViewController
+
+static CGFloat const kCDStereoTopOverlayHeight = 132.0;
+static CGFloat const kCDStereoPreviewTopInset = 124.0;
+static CGFloat const kCDStereoBottomOverlayHeight = 156.0;
 
 - (void)viewDidLoad {
     [super viewDidLoad];
@@ -48,11 +65,17 @@
     self.sessionQueue = dispatch_queue_create("com.example.captureDemo.stereo.session", DISPATCH_QUEUE_SERIAL);
     self.exportQueue = dispatch_queue_create("com.example.captureDemo.stereo.export", DISPATCH_QUEUE_SERIAL);
     self.channels = [NSMutableArray array];
-    self.finishedRecordingURLs = [NSMutableArray array];
+    self.finishedRecordings = [NSMutableArray array];
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(settingsDidChange)
+                                                 name:CDStereoCameraSettingsDidChangeNotification
+                                               object:nil];
     [self setupUI];
+    [self updateSettingsLabels];
 }
 
 - (void)dealloc {
+    [[NSNotificationCenter defaultCenter] removeObserver:self];
     [self.uiTimer invalidate];
     if (self.session) {
         [self.session stopRunning];
@@ -105,8 +128,12 @@
     CGFloat height = self.view.bounds.size.height;
 
     self.backButton.frame = CGRectMake(16.0, safeTop + 10.0, 32.0, 32.0);
-    self.titleLabel.frame = CGRectMake(60.0, safeTop + 6.0, width - 120.0, 24.0);
-    self.statusLabel.frame = CGRectMake(24.0, CGRectGetMaxY(self.titleLabel.frame) + 4.0, width - 48.0, 18.0);
+    self.settingsButton.frame = CGRectMake(width - 104.0, safeTop + 8.0, 40.0, 32.0);
+    self.libraryButton.frame = CGRectMake(width - 56.0, safeTop + 8.0, 40.0, 32.0);
+    self.titleLabel.frame = CGRectMake(68.0, safeTop + 2.0, width - 144.0, 24.0);
+    self.captureInfoLabel.frame = CGRectMake(68.0, CGRectGetMaxY(self.titleLabel.frame) + 2.0, width - 144.0, 18.0);
+    self.paramsLabel.frame = CGRectMake(24.0, CGRectGetMaxY(self.captureInfoLabel.frame) + 2.0, width - 48.0, 18.0);
+    self.statusLabel.frame = CGRectMake(24.0, CGRectGetMaxY(self.paramsLabel.frame) + 2.0, width - 48.0, 18.0);
 
     CGFloat controlsHeight = 144.0 + safeBottom;
     CGFloat controlsTop = height - controlsHeight;
@@ -127,14 +154,17 @@
     topFade.backgroundColor = [[UIColor blackColor] colorWithAlphaComponent:0.30];
     topFade.userInteractionEnabled = NO;
     topFade.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleBottomMargin;
-    topFade.frame = CGRectMake(0, 0, self.view.bounds.size.width, 88);
+    topFade.frame = CGRectMake(0, 0, self.view.bounds.size.width, kCDStereoTopOverlayHeight);
     [self.view addSubview:topFade];
 
     UIView *bottomFade = [[UIView alloc] initWithFrame:CGRectZero];
     bottomFade.backgroundColor = [[UIColor blackColor] colorWithAlphaComponent:0.38];
     bottomFade.userInteractionEnabled = NO;
     bottomFade.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleTopMargin;
-    bottomFade.frame = CGRectMake(0, self.view.bounds.size.height - 156, self.view.bounds.size.width, 156);
+    bottomFade.frame = CGRectMake(0,
+                                  self.view.bounds.size.height - kCDStereoBottomOverlayHeight,
+                                  self.view.bounds.size.width,
+                                  kCDStereoBottomOverlayHeight);
     [self.view addSubview:bottomFade];
 
     self.backButton = [UIButton buttonWithType:UIButtonTypeSystem];
@@ -143,12 +173,40 @@
     [self.backButton addTarget:self action:@selector(goBack) forControlEvents:UIControlEventTouchUpInside];
     [self.view addSubview:self.backButton];
 
+    self.settingsButton = [UIButton buttonWithType:UIButtonTypeSystem];
+    [self.settingsButton setImage:[UIImage systemImageNamed:@"gearshape.fill"] forState:UIControlStateNormal];
+    self.settingsButton.tintColor = [UIColor whiteColor];
+    self.settingsButton.backgroundColor = [[UIColor blackColor] colorWithAlphaComponent:0.18];
+    self.settingsButton.layer.cornerRadius = 16.0;
+    [self.settingsButton addTarget:self action:@selector(showSettings) forControlEvents:UIControlEventTouchUpInside];
+    [self.view addSubview:self.settingsButton];
+
+    self.libraryButton = [UIButton buttonWithType:UIButtonTypeSystem];
+    [self.libraryButton setImage:[UIImage systemImageNamed:@"tray.full"] forState:UIControlStateNormal];
+    self.libraryButton.tintColor = [UIColor whiteColor];
+    self.libraryButton.backgroundColor = [[UIColor blackColor] colorWithAlphaComponent:0.18];
+    self.libraryButton.layer.cornerRadius = 16.0;
+    [self.libraryButton addTarget:self action:@selector(showDownloadList) forControlEvents:UIControlEventTouchUpInside];
+    [self.view addSubview:self.libraryButton];
+
     self.titleLabel = [[UILabel alloc] initWithFrame:CGRectZero];
     self.titleLabel.text = @"双目分镜拍摄";
     self.titleLabel.textAlignment = NSTextAlignmentCenter;
     self.titleLabel.textColor = [UIColor whiteColor];
     self.titleLabel.font = [UIFont boldSystemFontOfSize:18.0];
     [self.view addSubview:self.titleLabel];
+
+    self.captureInfoLabel = [[UILabel alloc] initWithFrame:CGRectZero];
+    self.captureInfoLabel.textAlignment = NSTextAlignmentCenter;
+    self.captureInfoLabel.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.82];
+    self.captureInfoLabel.font = [UIFont systemFontOfSize:12.0 weight:UIFontWeightSemibold];
+    [self.view addSubview:self.captureInfoLabel];
+
+    self.paramsLabel = [[UILabel alloc] initWithFrame:CGRectZero];
+    self.paramsLabel.textAlignment = NSTextAlignmentCenter;
+    self.paramsLabel.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.82];
+    self.paramsLabel.font = [UIFont systemFontOfSize:12.0];
+    [self.view addSubview:self.paramsLabel];
 
     self.statusLabel = [[UILabel alloc] initWithFrame:CGRectZero];
     self.statusLabel.text = @"准备加载相机";
@@ -159,7 +217,7 @@
     [self.view addSubview:self.statusLabel];
 
     self.recordHintLabel = [[UILabel alloc] initWithFrame:CGRectZero];
-    self.recordHintLabel.text = @"将同时录制所有可用镜头";
+    self.recordHintLabel.text = @"将同时录制超广角和广角";
     self.recordHintLabel.textAlignment = NSTextAlignmentCenter;
     self.recordHintLabel.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.82];
     self.recordHintLabel.font = [UIFont systemFontOfSize:12.0];
@@ -184,6 +242,11 @@
     [self updateRecordButtonAppearance];
 }
 
+- (void)settingsDidChange {
+    [self updateSettingsLabels];
+    [self applySettingsToChannels];
+}
+
 - (void)requestPermissionsAndSetupIfNeeded {
     [self updateStatus:@"检查相机权限..."];
 
@@ -194,17 +257,9 @@
             return;
         }
 
-        [PHPhotoLibrary requestAuthorizationForAccessLevel:PHAccessLevelAddOnly handler:^(PHAuthorizationStatus status) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                if (status != PHAuthorizationStatusAuthorized && status != PHAuthorizationStatusLimited) {
-                    [self showSimpleAlertWithTitle:@"无法写入相册" message:@"请在系统设置中允许添加到相册，否则无法保存录制结果。"];
-                    [self updateStatus:@"相册写入权限未开启"];
-                    return;
-                }
-
-                [self configureSessionIfNeeded];
-            });
-        }];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self configureSessionIfNeeded];
+        });
     }];
 }
 
@@ -249,6 +304,8 @@
         dispatch_async(dispatch_get_main_queue(), ^{
             [self installPreviewTiles];
             [self layoutPreviewTiles];
+            [self applySettingsToChannels];
+            [self updateSettingsLabels];
             [self updateStatus:[NSString stringWithFormat:@"已接入 %lu 路镜头，竖屏录制已开启", (unsigned long)self.channels.count]];
             [self startSessionIfNeeded];
         });
@@ -259,8 +316,7 @@
     AVCaptureDeviceDiscoverySession *discovery = [AVCaptureDeviceDiscoverySession
                                                   discoverySessionWithDeviceTypes:@[
         AVCaptureDeviceTypeBuiltInUltraWideCamera,
-        AVCaptureDeviceTypeBuiltInWideAngleCamera,
-        AVCaptureDeviceTypeBuiltInTelephotoCamera
+        AVCaptureDeviceTypeBuiltInWideAngleCamera
     ]
                                                   mediaType:AVMediaTypeVideo
                                                    position:AVCaptureDevicePositionBack];
@@ -268,8 +324,7 @@
     NSMutableArray<AVCaptureDevice *> *orderedDevices = [NSMutableArray array];
     NSArray<NSString *> *preferredTypes = @[
         AVCaptureDeviceTypeBuiltInUltraWideCamera,
-        AVCaptureDeviceTypeBuiltInWideAngleCamera,
-        AVCaptureDeviceTypeBuiltInTelephotoCamera
+        AVCaptureDeviceTypeBuiltInWideAngleCamera
     ];
 
     for (NSString *type in preferredTypes) {
@@ -346,10 +401,104 @@
     if ([device.deviceType isEqualToString:AVCaptureDeviceTypeBuiltInWideAngleCamera]) {
         return @"1.0x 广角";
     }
-    if ([device.deviceType isEqualToString:AVCaptureDeviceTypeBuiltInTelephotoCamera]) {
-        return @"长焦";
-    }
     return device.localizedName ?: @"镜头";
+}
+
+- (void)applySettingsToChannels {
+    NSArray<CDStereoCameraChannel *> *channels = [self.channels copy];
+    if (channels.count == 0) {
+        return;
+    }
+
+    dispatch_async(self.sessionQueue, ^{
+        for (CDStereoCameraChannel *channel in channels) {
+            [self configureCaptureDevice:channel.device];
+        }
+    });
+}
+
+- (void)configureCaptureDevice:(AVCaptureDevice *)device {
+    if (!device) {
+        return;
+    }
+
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    NSInteger frameRate = [defaults integerForKey:CDStereoSettingsFrameRateKey];
+    if (frameRate == 0) frameRate = 30;
+
+    float whiteBalance = [defaults floatForKey:CDStereoSettingsWhiteBalanceKey];
+    if (whiteBalance == 0) whiteBalance = 4500.0f;
+
+    float shutterSpeed = [defaults floatForKey:CDStereoSettingsShutterSpeedKey];
+    if (shutterSpeed == 0) shutterSpeed = 250.0f;
+
+    float targetISO = [defaults floatForKey:CDStereoSettingsISOKey];
+    if (targetISO == 0) targetISO = 320.0f;
+
+    NSError *error = nil;
+    if (![device lockForConfiguration:&error]) {
+        NSLog(@"Stereo lockForConfiguration error: %@", error.localizedDescription);
+        return;
+    }
+
+    CMTime frameDuration = CMTimeMake(1, (int32_t)frameRate);
+    device.activeVideoMinFrameDuration = frameDuration;
+    device.activeVideoMaxFrameDuration = frameDuration;
+
+    float minISO = device.activeFormat.minISO;
+    float maxISO = device.activeFormat.maxISO;
+    float iso = MIN(MAX(targetISO, minISO), maxISO);
+    CMTime shutterDuration = CMTimeMake(1, MAX(1, (int32_t)lrintf(shutterSpeed)));
+
+    if ([device isExposureModeSupported:AVCaptureExposureModeCustom]) {
+        [device setExposureModeCustomWithDuration:shutterDuration ISO:iso completionHandler:nil];
+    }
+
+    if ([device isWhiteBalanceModeSupported:AVCaptureWhiteBalanceModeLocked]) {
+        AVCaptureWhiteBalanceTemperatureAndTintValues tempAndTint;
+        tempAndTint.temperature = whiteBalance;
+        tempAndTint.tint = 0;
+        AVCaptureWhiteBalanceGains gains = [device deviceWhiteBalanceGainsForTemperatureAndTintValues:tempAndTint];
+        float maxGain = device.maxWhiteBalanceGain;
+        gains.redGain = MAX(1.0f, MIN(maxGain, gains.redGain));
+        gains.greenGain = MAX(1.0f, MIN(maxGain, gains.greenGain));
+        gains.blueGain = MAX(1.0f, MIN(maxGain, gains.blueGain));
+        [device setWhiteBalanceModeLockedWithDeviceWhiteBalanceGains:gains completionHandler:nil];
+    }
+
+    if ([device isFocusModeSupported:AVCaptureFocusModeContinuousAutoFocus]) {
+        device.focusMode = AVCaptureFocusModeContinuousAutoFocus;
+    } else if ([device isFocusModeSupported:AVCaptureFocusModeAutoFocus]) {
+        device.focusMode = AVCaptureFocusModeAutoFocus;
+    }
+
+    [device unlockForConfiguration];
+}
+
+- (void)updateSettingsLabels {
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+
+    NSInteger resolution = [defaults integerForKey:CDStereoSettingsResolutionKey];
+    NSArray<NSString *> *resolutions = @[@"720P", @"1080P", @"4K"];
+    if (resolution < 0 || resolution >= (NSInteger)resolutions.count) {
+        resolution = 1;
+    }
+
+    NSInteger frameRate = [defaults integerForKey:CDStereoSettingsFrameRateKey];
+    if (frameRate == 0) frameRate = 30;
+    self.captureInfoLabel.text = [NSString stringWithFormat:@"%@ %ldfps", resolutions[resolution], (long)frameRate];
+
+    float whiteBalance = [defaults floatForKey:CDStereoSettingsWhiteBalanceKey];
+    if (whiteBalance == 0) whiteBalance = 4500.0f;
+    float shutterSpeed = [defaults floatForKey:CDStereoSettingsShutterSpeedKey];
+    if (shutterSpeed == 0) shutterSpeed = 250.0f;
+    float iso = [defaults floatForKey:CDStereoSettingsISOKey];
+    if (iso == 0) iso = 320.0f;
+
+    self.paramsLabel.text = [NSString stringWithFormat:@"0.5x + 1.0x | %.0fK | 1/%.0f | ISO%.0f",
+                             whiteBalance,
+                             shutterSpeed,
+                             iso];
 }
 
 - (void)installPreviewTiles {
@@ -390,7 +539,7 @@
     CGFloat safeBottom = self.view.safeAreaInsets.bottom;
     CGFloat width = self.view.bounds.size.width;
     CGFloat height = self.view.bounds.size.height;
-    CGFloat topInset = safeTop + 56.0;
+    CGFloat topInset = safeTop + kCDStereoPreviewTopInset;
     CGFloat bottomInset = 154.0 + safeBottom;
     CGFloat availableWidth = width - 32.0;
     CGFloat availableHeight = height - topInset - bottomInset;
@@ -451,12 +600,12 @@
         return;
     }
 
-    [self.finishedRecordingURLs removeAllObjects];
+    [self.finishedRecordings removeAllObjects];
     self.pendingStops = 0;
     self.isRecording = YES;
     self.recordingStartedAt = CACurrentMediaTime();
     self.durationLabel.hidden = NO;
-    self.recordHintLabel.text = @"正在同步录制所有镜头";
+    self.recordHintLabel.text = @"正在同步录制超广角和广角";
     [self updateStatus:@"开始录制..."];
     [self startUITimer];
     [self updateRecordButtonAppearance];
@@ -515,8 +664,11 @@ didFinishRecordingToOutputFileAtURL:(NSURL *)outputFileURL
       fromConnections:(NSArray<AVCaptureConnection *> *)connections
                 error:(NSError *)error {
     if (!error && outputFileURL) {
-        @synchronized (self.finishedRecordingURLs) {
-            [self.finishedRecordingURLs addObject:outputFileURL];
+        CDStereoFinishedRecording *finished = [[CDStereoFinishedRecording alloc] init];
+        finished.sourceURL = outputFileURL;
+        finished.displayName = [self displayNameForRecordingURL:outputFileURL];
+        @synchronized (self.finishedRecordings) {
+            [self.finishedRecordings addObject:finished];
         }
     }
 
@@ -531,16 +683,17 @@ didFinishRecordingToOutputFileAtURL:(NSURL *)outputFileURL
             self.isRecording = NO;
             [self stopUITimer];
             [self updateRecordButtonAppearance];
-            self.recordHintLabel.text = @"正在整理并保存到相册";
-            [self updateStatus:@"导出竖屏视频并写入相册..."];
+            self.recordHintLabel.text = @"正在整理到下载列表";
+            [self updateStatus:@"导出竖屏视频到下载列表..."];
             [self finalizeRecordings];
         });
     }
 }
 
 - (void)finalizeRecordings {
-    NSArray<NSURL *> *urls = [self.finishedRecordingURLs copy];
-    if (urls.count == 0) {
+    NSArray<CDStereoFinishedRecording *> *recordings = [self.finishedRecordings copy];
+    NSInteger expectedCount = self.channels.count;
+    if (recordings.count == 0) {
         self.durationLabel.hidden = YES;
         self.recordHintLabel.text = @"录制失败，请重试";
         [self updateStatus:@"没有拿到有效视频文件"];
@@ -548,19 +701,32 @@ didFinishRecordingToOutputFileAtURL:(NSURL *)outputFileURL
         return;
     }
 
-    [self updateStatus:[NSString stringWithFormat:@"准备保存 %lu 条视频...", (unsigned long)urls.count]];
+    [self updateStatus:[NSString stringWithFormat:@"准备整理 %lu 条视频...", (unsigned long)recordings.count]];
 
     dispatch_async(self.exportQueue, ^{
+        NSError *folderError = nil;
+        NSURL *batchFolderURL = [self createBatchFolderURL:&folderError];
+        if (!batchFolderURL || folderError) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                self.durationLabel.hidden = YES;
+                self.recordHintLabel.text = @"整理失败，请重试";
+                [self updateStatus:@"无法创建下载列表目录"];
+                [self showSimpleAlertWithTitle:@"保存失败" message:folderError.localizedDescription ?: @"无法创建下载列表目录。"];
+            });
+            return;
+        }
+
         NSInteger savedCount = 0;
         NSError *lastError = nil;
 
-        for (NSUInteger idx = 0; idx < urls.count; idx++) {
+        for (NSUInteger idx = 0; idx < recordings.count; idx++) {
             @autoreleasepool {
-                NSURL *sourceURL = urls[idx];
+                CDStereoFinishedRecording *recording = recordings[idx];
+                NSURL *sourceURL = recording.sourceURL;
                 dispatch_async(dispatch_get_main_queue(), ^{
                     [self updateStatus:[NSString stringWithFormat:@"正在保存第 %lu/%lu 条视频...",
                                         (unsigned long)(idx + 1),
-                                        (unsigned long)urls.count]];
+                                        (unsigned long)recordings.count]];
                 });
 
                 dispatch_semaphore_t waitSemaphore = dispatch_semaphore_create(0);
@@ -575,12 +741,13 @@ didFinishRecordingToOutputFileAtURL:(NSURL *)outputFileURL
                 dispatch_semaphore_wait(waitSemaphore, DISPATCH_TIME_FOREVER);
 
                 if (!stepError && finalURL) {
-                    dispatch_semaphore_t saveSemaphore = dispatch_semaphore_create(0);
-                    [self saveVideoToPhotoLibrary:finalURL completion:^(NSError * _Nullable saveError) {
-                        stepError = saveError;
-                        dispatch_semaphore_signal(saveSemaphore);
-                    }];
-                    dispatch_semaphore_wait(saveSemaphore, DISPATCH_TIME_FOREVER);
+                    NSURL *destinationURL = [batchFolderURL URLByAppendingPathComponent:[self persistentFilenameForDisplayName:recording.displayName]];
+                    [[NSFileManager defaultManager] removeItemAtURL:destinationURL error:nil];
+                    if (![[NSFileManager defaultManager] moveItemAtURL:finalURL toURL:destinationURL error:&stepError]) {
+                        finalURL = nil;
+                    } else {
+                        finalURL = destinationURL;
+                    }
                 }
 
                 if (!stepError) {
@@ -590,7 +757,7 @@ didFinishRecordingToOutputFileAtURL:(NSURL *)outputFileURL
                 }
 
                 [[NSFileManager defaultManager] removeItemAtURL:sourceURL error:nil];
-                if (finalURL && ![finalURL isEqual:sourceURL]) {
+                if (finalURL && ![finalURL isEqual:sourceURL] && ![finalURL.path hasPrefix:batchFolderURL.path]) {
                     [[NSFileManager defaultManager] removeItemAtURL:finalURL error:nil];
                 }
             }
@@ -598,14 +765,21 @@ didFinishRecordingToOutputFileAtURL:(NSURL *)outputFileURL
 
         dispatch_async(dispatch_get_main_queue(), ^{
             self.durationLabel.hidden = YES;
-            if (savedCount == urls.count) {
-                self.recordHintLabel.text = @"已保存到系统相册";
-                [self updateStatus:[NSString stringWithFormat:@"保存完成，共 %ld 条视频", (long)savedCount]];
-            } else {
-                self.recordHintLabel.text = @"部分视频保存失败";
-                [self updateStatus:@"保存时出现异常"];
-                NSString *message = lastError.localizedDescription ?: @"请检查相册权限或设备存储空间。";
+            BOOL allChannelsSaved = (savedCount == expectedCount);
+            if (allChannelsSaved) {
+                self.recordHintLabel.text = @"已保存到下载列表";
+                [self updateStatus:[NSString stringWithFormat:@"已整理完成，共 %ld 条视频，可在下载列表保存到相册", (long)savedCount]];
+            } else if (savedCount > 0) {
+                self.recordHintLabel.text = @"部分视频已进入下载列表";
+                [self updateStatus:@"整理时出现异常"];
+                NSString *message = lastError.localizedDescription ?: @"部分视频导出失败，请检查设备存储空间。";
                 [self showSimpleAlertWithTitle:@"保存未完成" message:message];
+            } else {
+                [[NSFileManager defaultManager] removeItemAtURL:batchFolderURL error:nil];
+                self.recordHintLabel.text = @"整理失败，请重试";
+                [self updateStatus:@"没有成功写入下载列表"];
+                NSString *message = lastError.localizedDescription ?: @"请检查设备存储空间后重试。";
+                [self showSimpleAlertWithTitle:@"保存失败" message:message];
             }
         });
     });
@@ -689,17 +863,51 @@ didFinishRecordingToOutputFileAtURL:(NSURL *)outputFileURL
     return [NSURL fileURLWithPath:[NSTemporaryDirectory() stringByAppendingPathComponent:filename]];
 }
 
-- (void)saveVideoToPhotoLibrary:(NSURL *)fileURL completion:(void (^)(NSError * _Nullable error))completion {
-    [[PHPhotoLibrary sharedPhotoLibrary] performChanges:^{
-        [PHAssetCreationRequest creationRequestForAssetFromVideoAtFileURL:fileURL];
-    } completionHandler:^(BOOL success, NSError * _Nullable error) {
-        if (!success && !error) {
-            error = [NSError errorWithDomain:@"CDStereoCameraErrorDomain"
-                                        code:-4
-                                    userInfo:@{NSLocalizedDescriptionKey: @"写入相册失败"}];
+- (NSString *)displayNameForRecordingURL:(NSURL *)recordingURL {
+    for (CDStereoCameraChannel *channel in self.channels) {
+        if ([channel.recordingURL isEqual:recordingURL]) {
+            return channel.displayName;
         }
-        completion(error);
-    }];
+    }
+    return @"1.0x 广角";
+}
+
+- (NSURL *)stereoCapturesRootURL {
+    NSURL *documentsURL = [[[NSFileManager defaultManager] URLsForDirectory:NSDocumentDirectory inDomains:NSUserDomainMask] firstObject];
+    return [documentsURL URLByAppendingPathComponent:@"StereoCaptures" isDirectory:YES];
+}
+
+- (NSURL *)createBatchFolderURL:(NSError **)error {
+    NSFileManager *fileManager = [NSFileManager defaultManager];
+    NSURL *rootURL = [self stereoCapturesRootURL];
+    if (![fileManager fileExistsAtPath:rootURL.path]) {
+        [fileManager createDirectoryAtURL:rootURL withIntermediateDirectories:YES attributes:nil error:error];
+        if (error && *error) {
+            return nil;
+        }
+    }
+
+    NSString *timestamp = [self batchTimestampString];
+    NSURL *folderURL = [rootURL URLByAppendingPathComponent:[NSString stringWithFormat:@"StereoCapture_%@", timestamp] isDirectory:YES];
+    [fileManager createDirectoryAtURL:folderURL withIntermediateDirectories:YES attributes:nil error:error];
+    if (error && *error) {
+        return nil;
+    }
+    return folderURL;
+}
+
+- (NSString *)batchTimestampString {
+    NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
+    formatter.locale = [NSLocale localeWithLocaleIdentifier:@"en_US_POSIX"];
+    formatter.dateFormat = @"yyyy-MM-dd_HH-mm-ss";
+    return [formatter stringFromDate:[NSDate date]];
+}
+
+- (NSString *)persistentFilenameForDisplayName:(NSString *)displayName {
+    if ([displayName containsString:@"0.5x"]) {
+        return @"ultra_wide.mp4";
+    }
+    return @"wide.mp4";
 }
 
 - (void)startUITimer {
@@ -762,6 +970,23 @@ didFinishRecordingToOutputFileAtURL:(NSURL *)outputFileURL
 
 - (void)goBack {
     [self.navigationController popViewControllerAnimated:YES];
+}
+
+- (void)showSettings {
+    CDStereoCameraSettingsViewController *settingsVC = [[CDStereoCameraSettingsViewController alloc] init];
+    UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:settingsVC];
+    [self presentViewController:nav animated:YES completion:nil];
+}
+
+- (void)showDownloadList {
+    Class listClass = NSClassFromString(@"CDStereoCaptureListViewController");
+    UIViewController *listViewController = listClass ? [[listClass alloc] init] : nil;
+    if (!listViewController) {
+        [self showSimpleAlertWithTitle:@"无法打开列表" message:@"下载列表页面未正确加载。"];
+        return;
+    }
+    [self.navigationController setNavigationBarHidden:NO animated:NO];
+    [self.navigationController pushViewController:listViewController animated:YES];
 }
 
 - (void)showSimpleAlertWithTitle:(NSString *)title message:(NSString *)message {

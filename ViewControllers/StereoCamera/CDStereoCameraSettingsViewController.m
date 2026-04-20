@@ -1,30 +1,28 @@
-#import "CDCameraSettingsViewController.h"
+#import "CDStereoCameraSettingsViewController.h"
 
-static NSString * const kCDSettingsFrameRate = @"CDSettingsFrameRate";
-static NSString * const kCDSettingsWhiteBalance = @"CDSettingsWhiteBalance";
-static NSString * const kCDSettingsShutterSpeed = @"CDSettingsShutterSpeed";
-static NSString * const kCDSettingsISO = @"CDSettingsISO";
-static NSString * const kCDSettingsResolution = @"CDSettingsResolution";
-static NSString * const kCDSettingsCameraLens = @"CDSettingsCameraLens";
+NSString * const CDStereoCameraSettingsDidChangeNotification = @"CDStereoCameraSettingsDidChange";
+NSString * const CDStereoSettingsFrameRateKey = @"CDStereoSettingsFrameRate";
+NSString * const CDStereoSettingsWhiteBalanceKey = @"CDStereoSettingsWhiteBalance";
+NSString * const CDStereoSettingsShutterSpeedKey = @"CDStereoSettingsShutterSpeed";
+NSString * const CDStereoSettingsISOKey = @"CDStereoSettingsISO";
+NSString * const CDStereoSettingsResolutionKey = @"CDStereoSettingsResolution";
 
-@interface CDCameraSettingsViewController () <UITableViewDataSource, UITableViewDelegate>
+@interface CDStereoCameraSettingsViewController () <UITableViewDataSource, UITableViewDelegate>
 
 @property (nonatomic, strong) UITableView *tableView;
-
 @property (nonatomic, assign) NSInteger frameRate;
 @property (nonatomic, assign) float whiteBalance;
 @property (nonatomic, assign) float shutterSpeed;
 @property (nonatomic, assign) float iso;
 @property (nonatomic, assign) NSInteger resolution;
-@property (nonatomic, assign) NSInteger cameraLens;
 
 @end
 
-@implementation CDCameraSettingsViewController
+@implementation CDStereoCameraSettingsViewController
 
 - (void)viewDidLoad {
     [super viewDidLoad];
-    self.title = @"相机设置";
+    self.title = @"双目相机设置";
     self.view.backgroundColor = [UIColor systemBackgroundColor];
 
     [self loadSettings];
@@ -62,83 +60,62 @@ static NSString * const kCDSettingsCameraLens = @"CDSettingsCameraLens";
 - (void)loadSettings {
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
 
-    self.frameRate = [defaults integerForKey:kCDSettingsFrameRate];
+    self.frameRate = [defaults integerForKey:CDStereoSettingsFrameRateKey];
     if (self.frameRate == 0) self.frameRate = 30;
 
-    self.whiteBalance = [defaults floatForKey:kCDSettingsWhiteBalance];
+    self.whiteBalance = [defaults floatForKey:CDStereoSettingsWhiteBalanceKey];
     if (self.whiteBalance == 0) self.whiteBalance = 4500;
 
-    self.shutterSpeed = [defaults floatForKey:kCDSettingsShutterSpeed];
+    self.shutterSpeed = [defaults floatForKey:CDStereoSettingsShutterSpeedKey];
     if (self.shutterSpeed == 0) self.shutterSpeed = 250;
 
-    self.iso = [defaults floatForKey:kCDSettingsISO];
+    self.iso = [defaults floatForKey:CDStereoSettingsISOKey];
     if (self.iso == 0) self.iso = 320;
 
-    self.resolution = [defaults integerForKey:kCDSettingsResolution];
-    if (self.resolution == 0) self.resolution = 1; // 1 = 1080P
-
-    self.cameraLens = [defaults integerForKey:kCDSettingsCameraLens];
+    self.resolution = [defaults integerForKey:CDStereoSettingsResolutionKey];
+    if (self.resolution == 0) self.resolution = 1;
 }
 
 - (void)saveSettings {
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-    [defaults setInteger:self.frameRate forKey:kCDSettingsFrameRate];
-    [defaults setFloat:self.whiteBalance forKey:kCDSettingsWhiteBalance];
-    [defaults setFloat:self.shutterSpeed forKey:kCDSettingsShutterSpeed];
-    [defaults setFloat:self.iso forKey:kCDSettingsISO];
-    [defaults setInteger:self.resolution forKey:kCDSettingsResolution];
-    [defaults setInteger:self.cameraLens forKey:kCDSettingsCameraLens];
+    [defaults setInteger:self.frameRate forKey:CDStereoSettingsFrameRateKey];
+    [defaults setFloat:self.whiteBalance forKey:CDStereoSettingsWhiteBalanceKey];
+    [defaults setFloat:self.shutterSpeed forKey:CDStereoSettingsShutterSpeedKey];
+    [defaults setFloat:self.iso forKey:CDStereoSettingsISOKey];
+    [defaults setInteger:self.resolution forKey:CDStereoSettingsResolutionKey];
     [defaults synchronize];
 }
 
-- (void)cancelTapped {
-    [self dismissViewControllerAnimated:YES completion:nil];
-}
-
 - (void)resetTapped {
-    // Reset to default values
-    self.cameraLens = 0;      // 超广角 (0.5x)
-    self.resolution = 1;      // 1080P
-    self.frameRate = 30;      // 30 fps
-    self.whiteBalance = 4500;  // 4500K
-    self.shutterSpeed = 250;   // 1/250
-    self.iso = 320;           // ISO 320
-
+    self.resolution = 1;
+    self.frameRate = 30;
+    self.whiteBalance = 4500;
+    self.shutterSpeed = 250;
+    self.iso = 320;
     [self.tableView reloadData];
 }
 
 - (void)saveTapped {
     [self saveSettings];
-    [[NSNotificationCenter defaultCenter] postNotificationName:@"CDCameraSettingsDidChange" object:nil];
+    [[NSNotificationCenter defaultCenter] postNotificationName:CDStereoCameraSettingsDidChangeNotification object:nil];
     [self dismissViewControllerAnimated:YES completion:nil];
 }
 
-#pragma mark - UITableViewDataSource
-
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
-    return 6;
+    return 5;
 }
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
-    switch (section) {
-        case 0: return 1;
-        case 1: return 1;
-        case 2: return 1;
-        case 3: return 1;
-        case 4: return 1;
-        case 5: return 1;
-        default: return 0;
-    }
+    return 1;
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
     switch (section) {
-        case 0: return @"摄像头";
-        case 1: return @"分辨率";
-        case 2: return @"帧率";
-        case 3: return @"白平衡 (K)";
-        case 4: return @"快门速度";
-        case 5: return @"ISO";
+        case 0: return @"分辨率";
+        case 1: return @"帧率";
+        case 2: return @"白平衡 (K)";
+        case 3: return @"快门速度";
+        case 4: return @"ISO";
         default: return nil;
     }
 }
@@ -148,19 +125,11 @@ static NSString * const kCDSettingsCameraLens = @"CDSettingsCameraLens";
     cell.selectionStyle = UITableViewCellSelectionStyleNone;
 
     if (indexPath.section == 0) {
-        // Camera lens
-        cell.textLabel.text = @"镜头";
-        NSArray *lensNames = @[@"超广角 (0.5x)", @"广角 (1.0x)"];
-        cell.detailTextLabel.text = lensNames[self.cameraLens];
-        cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
-    } else if (indexPath.section == 1) {
-        // Resolution
         cell.textLabel.text = @"分辨率";
         NSArray *resolutions = @[@"720P", @"1080P", @"4K"];
         cell.detailTextLabel.text = resolutions[self.resolution];
         cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
-    } else if (indexPath.section == 2) {
-        // Frame rate
+    } else if (indexPath.section == 1) {
         cell.textLabel.text = @"帧率";
         NSArray *rates = @[@"24 fps", @"30 fps", @"60 fps"];
         NSArray *rateValues = @[@24, @30, @60];
@@ -168,8 +137,7 @@ static NSString * const kCDSettingsCameraLens = @"CDSettingsCameraLens";
         if (idx == NSNotFound) idx = 1;
         cell.detailTextLabel.text = rates[idx];
         cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
-    } else if (indexPath.section == 3) {
-        // White balance
+    } else if (indexPath.section == 2) {
         cell.textLabel.text = [NSString stringWithFormat:@"%.0fK", self.whiteBalance];
 
         UIStepper *stepper = [[UIStepper alloc] init];
@@ -178,15 +146,13 @@ static NSString * const kCDSettingsCameraLens = @"CDSettingsCameraLens";
         stepper.stepValue = 100;
         stepper.value = self.whiteBalance;
         stepper.translatesAutoresizingMaskIntoConstraints = NO;
-        stepper.tag = 301;
         [stepper addTarget:self action:@selector(whiteBalanceChanged:) forControlEvents:UIControlEventValueChanged];
         [cell.contentView addSubview:stepper];
         [NSLayoutConstraint activateConstraints:@[
             [stepper.centerYAnchor constraintEqualToAnchor:cell.contentView.centerYAnchor],
             [stepper.rightAnchor constraintEqualToAnchor:cell.contentView.rightAnchor constant:-16],
         ]];
-    } else if (indexPath.section == 4) {
-        // Shutter speed
+    } else if (indexPath.section == 3) {
         cell.textLabel.text = [NSString stringWithFormat:@"1/%.0f", self.shutterSpeed];
 
         UIStepper *stepper = [[UIStepper alloc] init];
@@ -195,15 +161,13 @@ static NSString * const kCDSettingsCameraLens = @"CDSettingsCameraLens";
         stepper.stepValue = 10;
         stepper.value = self.shutterSpeed;
         stepper.translatesAutoresizingMaskIntoConstraints = NO;
-        stepper.tag = 302;
         [stepper addTarget:self action:@selector(shutterSpeedChanged:) forControlEvents:UIControlEventValueChanged];
         [cell.contentView addSubview:stepper];
         [NSLayoutConstraint activateConstraints:@[
             [stepper.centerYAnchor constraintEqualToAnchor:cell.contentView.centerYAnchor],
             [stepper.rightAnchor constraintEqualToAnchor:cell.contentView.rightAnchor constant:-16],
         ]];
-    } else if (indexPath.section == 5) {
-        // ISO
+    } else if (indexPath.section == 4) {
         cell.textLabel.text = [NSString stringWithFormat:@"%.0f", self.iso];
 
         UIStepper *stepper = [[UIStepper alloc] init];
@@ -212,7 +176,6 @@ static NSString * const kCDSettingsCameraLens = @"CDSettingsCameraLens";
         stepper.stepValue = 10;
         stepper.value = self.iso;
         stepper.translatesAutoresizingMaskIntoConstraints = NO;
-        stepper.tag = 303;
         [stepper addTarget:self action:@selector(isoChanged:) forControlEvents:UIControlEventValueChanged];
         [cell.contentView addSubview:stepper];
         [NSLayoutConstraint activateConstraints:@[
@@ -226,49 +189,27 @@ static NSString * const kCDSettingsCameraLens = @"CDSettingsCameraLens";
 
 - (void)whiteBalanceChanged:(UIStepper *)stepper {
     self.whiteBalance = stepper.value;
-    [self.tableView reloadRowsAtIndexPaths:@[[NSIndexPath indexPathForRow:0 inSection:3]] withRowAnimation:UITableViewRowAnimationNone];
+    [self.tableView reloadRowsAtIndexPaths:@[[NSIndexPath indexPathForRow:0 inSection:2]] withRowAnimation:UITableViewRowAnimationNone];
 }
 
 - (void)shutterSpeedChanged:(UIStepper *)stepper {
     self.shutterSpeed = stepper.value;
-    [self.tableView reloadRowsAtIndexPaths:@[[NSIndexPath indexPathForRow:0 inSection:4]] withRowAnimation:UITableViewRowAnimationNone];
+    [self.tableView reloadRowsAtIndexPaths:@[[NSIndexPath indexPathForRow:0 inSection:3]] withRowAnimation:UITableViewRowAnimationNone];
 }
 
 - (void)isoChanged:(UIStepper *)stepper {
     self.iso = stepper.value;
-    [self.tableView reloadRowsAtIndexPaths:@[[NSIndexPath indexPathForRow:0 inSection:5]] withRowAnimation:UITableViewRowAnimationNone];
+    [self.tableView reloadRowsAtIndexPaths:@[[NSIndexPath indexPathForRow:0 inSection:4]] withRowAnimation:UITableViewRowAnimationNone];
 }
-
-#pragma mark - UITableViewDelegate
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
 
     if (indexPath.section == 0) {
-        [self showCameraLensPicker];
-    } else if (indexPath.section == 1) {
         [self showResolutionPicker];
-    } else if (indexPath.section == 2) {
+    } else if (indexPath.section == 1) {
         [self showFrameRatePicker];
     }
-}
-
-- (void)showCameraLensPicker {
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"选择镜头"
-                                                                   message:nil
-                                                            preferredStyle:UIAlertControllerStyleActionSheet];
-    NSArray *lensNames = @[@"超广角 (0.5x)", @"广角 (1.0x)"];
-    for (NSInteger i = 0; i < lensNames.count; i++) {
-        UIAlertAction *action = [UIAlertAction actionWithTitle:lensNames[i]
-                                                          style:UIAlertActionStyleDefault
-                                                        handler:^(UIAlertAction *action) {
-            self.cameraLens = i;
-            [self.tableView reloadData];
-        }];
-        [alert addAction:action];
-    }
-    [alert addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
-    [self presentViewController:alert animated:YES completion:nil];
 }
 
 - (void)showResolutionPicker {
@@ -279,7 +220,7 @@ static NSString * const kCDSettingsCameraLens = @"CDSettingsCameraLens";
     for (NSInteger i = 0; i < resolutions.count; i++) {
         UIAlertAction *action = [UIAlertAction actionWithTitle:resolutions[i]
                                                          style:UIAlertActionStyleDefault
-                                                       handler:^(UIAlertAction *action) {
+                                                       handler:^(UIAlertAction * _Nonnull action) {
             self.resolution = i;
             [self.tableView reloadData];
         }];
@@ -298,7 +239,7 @@ static NSString * const kCDSettingsCameraLens = @"CDSettingsCameraLens";
     for (NSInteger i = 0; i < rates.count; i++) {
         UIAlertAction *action = [UIAlertAction actionWithTitle:rates[i]
                                                          style:UIAlertActionStyleDefault
-                                                       handler:^(UIAlertAction *action) {
+                                                       handler:^(UIAlertAction * _Nonnull action) {
             self.frameRate = [values[i] integerValue];
             [self.tableView reloadData];
         }];
