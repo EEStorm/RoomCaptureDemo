@@ -411,20 +411,58 @@ static CGFloat const kCDStereoBottomOverlayHeight = 156.0;
     }
 
     dispatch_async(self.sessionQueue, ^{
+        NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+        NSInteger requestedFrameRate = [defaults integerForKey:CDStereoSettingsFrameRateKey];
+        if (requestedFrameRate == 0) {
+            requestedFrameRate = 30;
+        }
+
+        NSInteger appliedFrameRate = requestedFrameRate;
         for (CDStereoCameraChannel *channel in channels) {
-            [self configureCaptureDevice:channel.device];
+            NSInteger channelFrameRate = [self configureCaptureDevice:channel.device preferredFrameRate:requestedFrameRate];
+            appliedFrameRate = MIN(appliedFrameRate, channelFrameRate);
+        }
+
+        if (appliedFrameRate != requestedFrameRate) {
+            [defaults setInteger:appliedFrameRate forKey:CDStereoSettingsFrameRateKey];
+            [defaults synchronize];
+
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [self updateSettingsLabels];
+                [self updateStatus:[NSString stringWithFormat:@"双目模式当前最多支持 %ldfps，已自动回退", (long)appliedFrameRate]];
+            });
         }
     });
 }
 
-- (void)configureCaptureDevice:(AVCaptureDevice *)device {
+- (NSInteger)resolvedFrameRateForDevice:(AVCaptureDevice *)device preferredFrameRate:(NSInteger)preferredFrameRate {
+    if (!device || preferredFrameRate <= 0) {
+        return 30;
+    }
+
+    AVCaptureDeviceFormat *format = device.activeFormat;
+    NSInteger fallbackFrameRate = 30;
+
+    for (AVFrameRateRange *range in format.videoSupportedFrameRateRanges) {
+        NSInteger minFrameRate = MAX(1, (NSInteger)ceil(range.minFrameRate));
+        NSInteger maxFrameRate = MAX(minFrameRate, (NSInteger)floor(range.maxFrameRate));
+        fallbackFrameRate = MAX(fallbackFrameRate, maxFrameRate);
+
+        if (preferredFrameRate >= minFrameRate && preferredFrameRate <= maxFrameRate) {
+            return preferredFrameRate;
+        }
+    }
+
+    return fallbackFrameRate;
+}
+
+- (NSInteger)configureCaptureDevice:(AVCaptureDevice *)device preferredFrameRate:(NSInteger)preferredFrameRate {
     if (!device) {
-        return;
+        return MAX(1, preferredFrameRate);
     }
 
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-    NSInteger frameRate = [defaults integerForKey:CDStereoSettingsFrameRateKey];
-    if (frameRate == 0) frameRate = 30;
+    NSInteger frameRate = [self resolvedFrameRateForDevice:device preferredFrameRate:preferredFrameRate];
 
     float whiteBalance = [defaults floatForKey:CDStereoSettingsWhiteBalanceKey];
     if (whiteBalance == 0) whiteBalance = 4500.0f;
@@ -438,7 +476,7 @@ static CGFloat const kCDStereoBottomOverlayHeight = 156.0;
     NSError *error = nil;
     if (![device lockForConfiguration:&error]) {
         NSLog(@"Stereo lockForConfiguration error: %@", error.localizedDescription);
-        return;
+        return frameRate;
     }
 
     CMTime frameDuration = CMTimeMake(1, (int32_t)frameRate);
@@ -473,6 +511,7 @@ static CGFloat const kCDStereoBottomOverlayHeight = 156.0;
     }
 
     [device unlockForConfiguration];
+    return frameRate;
 }
 
 - (void)updateSettingsLabels {

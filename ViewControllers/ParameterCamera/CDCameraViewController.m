@@ -52,6 +52,7 @@
     dispatch_async(dispatch_get_main_queue(), ^{
         UIView *previewContainer = [self.view viewWithTag:100];
         self.previewLayer.frame = previewContainer.bounds;
+        [self updateSettingsLabels];
     });
 }
 

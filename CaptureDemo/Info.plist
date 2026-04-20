@@ -26,6 +26,8 @@
 	<string>录制环境声音</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>保存多镜头录制视频到系统相册</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>读取和保存采集视频到系统相册</string>
 	<key>UILaunchScreen</key>
 	<dict/>
 	<key>UISupportedInterfaceOrientations</key>

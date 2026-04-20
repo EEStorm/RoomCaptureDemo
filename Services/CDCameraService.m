@@ -71,6 +71,7 @@
     } else if (self.captureSession && self.videoDevice) {
         dispatch_async(dispatch_get_main_queue(), ^{
             [self configureDevice:self.videoDevice];
+            [[NSNotificationCenter defaultCenter] postNotificationName:@"CDCameraDidReload" object:nil];
         });
     }
 }
@@ -199,8 +200,43 @@
     return device;
 }
 
+- (int32_t)resolvedFrameRateForDevice:(AVCaptureDevice *)device preferredFrameRate:(int32_t)preferredFrameRate {
+    if (!device || preferredFrameRate <= 0) {
+        return 30;
+    }
+
+    AVCaptureDeviceFormat *format = device.activeFormat;
+    int32_t fallbackFrameRate = 30;
+
+    for (AVFrameRateRange *range in format.videoSupportedFrameRateRanges) {
+        int32_t minFrameRate = MAX(1, (int32_t)ceil(range.minFrameRate));
+        int32_t maxFrameRate = MAX(minFrameRate, (int32_t)floor(range.maxFrameRate));
+        fallbackFrameRate = MAX(fallbackFrameRate, maxFrameRate);
+
+        if (preferredFrameRate >= minFrameRate && preferredFrameRate <= maxFrameRate) {
+            return preferredFrameRate;
+        }
+    }
+
+    return fallbackFrameRate;
+}
+
+- (void)persistResolvedFrameRateIfNeeded:(int32_t)resolvedFrameRate {
+    if (resolvedFrameRate <= 0 || resolvedFrameRate == self.targetFrameRate) {
+        return;
+    }
+
+    self.targetFrameRate = resolvedFrameRate;
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    [defaults setInteger:resolvedFrameRate forKey:@"CDSettingsFrameRate"];
+    [defaults synchronize];
+}
+
 - (void)configureDevice:(AVCaptureDevice *)device {
     if (!device) return;
+
+    int32_t resolvedFrameRate = [self resolvedFrameRateForDevice:device preferredFrameRate:self.targetFrameRate];
+    [self persistResolvedFrameRateIfNeeded:resolvedFrameRate];
 
     NSError *error = nil;
     BOOL locked = [device lockForConfiguration:&error];
@@ -210,7 +246,7 @@
     }
 
     // Set frame rate
-    CMTime frameDuration = CMTimeMake(1, self.targetFrameRate);
+    CMTime frameDuration = CMTimeMake(1, resolvedFrameRate);
     device.activeVideoMinFrameDuration = frameDuration;
     device.activeVideoMaxFrameDuration = frameDuration;
 
@@ -250,7 +286,7 @@
     [device unlockForConfiguration];
 
     NSLog(@"Camera configured: 1920x1080, %dfps, WB=%.0fK, ISO:%.0f",
-          self.targetFrameRate, self.whiteBalanceTemperature, iso);
+          resolvedFrameRate, self.whiteBalanceTemperature, iso);
 }
 
 - (void)startSession {
