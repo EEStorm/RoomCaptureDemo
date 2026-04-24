@@ -14,6 +14,7 @@
 @property (nonatomic, assign) float whiteBalanceTemperature;
 @property (nonatomic, assign) CMTime shutterDuration;
 @property (nonatomic, assign) float targetISO;
+@property (nonatomic, assign) BOOL isoAuto;
 @property (nonatomic, assign) NSInteger currentCameraLens;
 
 @end
@@ -56,6 +57,8 @@
 
     _targetISO = [defaults floatForKey:@"CDSettingsISO"];
     if (_targetISO == 0) _targetISO = 320.0f;
+
+    _isoAuto = [defaults boolForKey:@"CDSettingsISOAuto"];
 
     _currentCameraLens = [defaults integerForKey:@"CDSettingsCameraLens"];
 }
@@ -251,14 +254,20 @@
     device.activeVideoMaxFrameDuration = frameDuration;
 
     // Set shutter and ISO
-    float minISO = device.activeFormat.minISO;
-    float maxISO = device.activeFormat.maxISO;
-    float iso = self.targetISO;
-    if (iso < minISO) iso = minISO;
-    if (iso > maxISO) iso = maxISO;
+    if (self.isoAuto) {
+        if ([device isExposureModeSupported:AVCaptureExposureModeContinuousAutoExposure]) {
+            [device setExposureMode:AVCaptureExposureModeContinuousAutoExposure];
+        }
+    } else {
+        float minISO = device.activeFormat.minISO;
+        float maxISO = device.activeFormat.maxISO;
+        float iso = self.targetISO;
+        if (iso < minISO) iso = minISO;
+        if (iso > maxISO) iso = maxISO;
 
-    if ([device isExposureModeSupported:AVCaptureExposureModeCustom]) {
-        [device setExposureModeCustomWithDuration:self.shutterDuration ISO:iso completionHandler:nil];
+        if ([device isExposureModeSupported:AVCaptureExposureModeCustom]) {
+            [device setExposureModeCustomWithDuration:self.shutterDuration ISO:iso completionHandler:nil];
+        }
     }
 
     // Set white balance
@@ -285,8 +294,18 @@
 
     [device unlockForConfiguration];
 
-    NSLog(@"Camera configured: 1920x1080, %dfps, WB=%.0fK, ISO:%.0f",
-          resolvedFrameRate, self.whiteBalanceTemperature, iso);
+    if (self.isoAuto) {
+        NSLog(@"Camera configured: 1920x1080, %dfps, WB=%.0fK, ISO:自动",
+              resolvedFrameRate, self.whiteBalanceTemperature);
+    } else {
+        float minISO = device.activeFormat.minISO;
+        float maxISO = device.activeFormat.maxISO;
+        float iso = self.targetISO;
+        if (iso < minISO) iso = minISO;
+        if (iso > maxISO) iso = maxISO;
+        NSLog(@"Camera configured: 1920x1080, %dfps, WB=%.0fK, ISO:%.0f",
+              resolvedFrameRate, self.whiteBalanceTemperature, iso);
+    }
 }
 
 - (void)startSession {

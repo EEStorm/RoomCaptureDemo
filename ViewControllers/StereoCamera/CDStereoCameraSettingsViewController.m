@@ -5,6 +5,7 @@ NSString * const CDStereoSettingsFrameRateKey = @"CDStereoSettingsFrameRate";
 NSString * const CDStereoSettingsWhiteBalanceKey = @"CDStereoSettingsWhiteBalance";
 NSString * const CDStereoSettingsShutterSpeedKey = @"CDStereoSettingsShutterSpeed";
 NSString * const CDStereoSettingsISOKey = @"CDStereoSettingsISO";
+NSString * const CDStereoSettingsISOAutoKey = @"CDStereoSettingsISOAuto";
 NSString * const CDStereoSettingsResolutionKey = @"CDStereoSettingsResolution";
 
 @interface CDStereoCameraSettingsViewController () <UITableViewDataSource, UITableViewDelegate>
@@ -14,6 +15,7 @@ NSString * const CDStereoSettingsResolutionKey = @"CDStereoSettingsResolution";
 @property (nonatomic, assign) float whiteBalance;
 @property (nonatomic, assign) float shutterSpeed;
 @property (nonatomic, assign) float iso;
+@property (nonatomic, assign) BOOL isoAuto;
 @property (nonatomic, assign) NSInteger resolution;
 
 @end
@@ -72,6 +74,8 @@ NSString * const CDStereoSettingsResolutionKey = @"CDStereoSettingsResolution";
     self.iso = [defaults floatForKey:CDStereoSettingsISOKey];
     if (self.iso == 0) self.iso = 320;
 
+    self.isoAuto = [defaults boolForKey:CDStereoSettingsISOAutoKey];
+
     self.resolution = [defaults integerForKey:CDStereoSettingsResolutionKey];
     if (self.resolution == 0) self.resolution = 1;
 }
@@ -82,6 +86,7 @@ NSString * const CDStereoSettingsResolutionKey = @"CDStereoSettingsResolution";
     [defaults setFloat:self.whiteBalance forKey:CDStereoSettingsWhiteBalanceKey];
     [defaults setFloat:self.shutterSpeed forKey:CDStereoSettingsShutterSpeedKey];
     [defaults setFloat:self.iso forKey:CDStereoSettingsISOKey];
+    [defaults setBool:self.isoAuto forKey:CDStereoSettingsISOAutoKey];
     [defaults setInteger:self.resolution forKey:CDStereoSettingsResolutionKey];
     [defaults synchronize];
 }
@@ -92,6 +97,7 @@ NSString * const CDStereoSettingsResolutionKey = @"CDStereoSettingsResolution";
     self.whiteBalance = 4500;
     self.shutterSpeed = 250;
     self.iso = 320;
+    self.isoAuto = NO;
     [self.tableView reloadData];
 }
 
@@ -106,6 +112,7 @@ NSString * const CDStereoSettingsResolutionKey = @"CDStereoSettingsResolution";
 }
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
+    if (section == 4) return 2;
     return 1;
 }
 
@@ -168,20 +175,31 @@ NSString * const CDStereoSettingsResolutionKey = @"CDStereoSettingsResolution";
             [stepper.rightAnchor constraintEqualToAnchor:cell.contentView.rightAnchor constant:-16],
         ]];
     } else if (indexPath.section == 4) {
-        cell.textLabel.text = [NSString stringWithFormat:@"%.0f", self.iso];
+        if (indexPath.row == 0) {
+            cell.textLabel.text = @"ISO 自动适应";
+            UISwitch *sw = [[UISwitch alloc] init];
+            sw.on = self.isoAuto;
+            [sw addTarget:self action:@selector(isoAutoChanged:) forControlEvents:UIControlEventValueChanged];
+            cell.accessoryView = sw;
+        } else {
+            cell.textLabel.text = self.isoAuto ? @"自动" : [NSString stringWithFormat:@"%.0f", self.iso];
+            cell.textLabel.textColor = self.isoAuto ? [UIColor systemGrayColor] : [UIColor labelColor];
 
-        UIStepper *stepper = [[UIStepper alloc] init];
-        stepper.minimumValue = 50;
-        stepper.maximumValue = 2000;
-        stepper.stepValue = 10;
-        stepper.value = self.iso;
-        stepper.translatesAutoresizingMaskIntoConstraints = NO;
-        [stepper addTarget:self action:@selector(isoChanged:) forControlEvents:UIControlEventValueChanged];
-        [cell.contentView addSubview:stepper];
-        [NSLayoutConstraint activateConstraints:@[
-            [stepper.centerYAnchor constraintEqualToAnchor:cell.contentView.centerYAnchor],
-            [stepper.rightAnchor constraintEqualToAnchor:cell.contentView.rightAnchor constant:-16],
-        ]];
+            if (!self.isoAuto) {
+                UIStepper *stepper = [[UIStepper alloc] init];
+                stepper.minimumValue = 50;
+                stepper.maximumValue = 2000;
+                stepper.stepValue = 10;
+                stepper.value = self.iso;
+                stepper.translatesAutoresizingMaskIntoConstraints = NO;
+                [stepper addTarget:self action:@selector(isoChanged:) forControlEvents:UIControlEventValueChanged];
+                [cell.contentView addSubview:stepper];
+                [NSLayoutConstraint activateConstraints:@[
+                    [stepper.centerYAnchor constraintEqualToAnchor:cell.contentView.centerYAnchor],
+                    [stepper.rightAnchor constraintEqualToAnchor:cell.contentView.rightAnchor constant:-16],
+                ]];
+            }
+        }
     }
 
     return cell;
@@ -199,7 +217,12 @@ NSString * const CDStereoSettingsResolutionKey = @"CDStereoSettingsResolution";
 
 - (void)isoChanged:(UIStepper *)stepper {
     self.iso = stepper.value;
-    [self.tableView reloadRowsAtIndexPaths:@[[NSIndexPath indexPathForRow:0 inSection:4]] withRowAnimation:UITableViewRowAnimationNone];
+    [self.tableView reloadRowsAtIndexPaths:@[[NSIndexPath indexPathForRow:1 inSection:4]] withRowAnimation:UITableViewRowAnimationNone];
+}
+
+- (void)isoAutoChanged:(UISwitch *)sw {
+    self.isoAuto = sw.on;
+    [self.tableView reloadRowsAtIndexPaths:@[[NSIndexPath indexPathForRow:1 inSection:4]] withRowAnimation:UITableViewRowAnimationNone];
 }
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {

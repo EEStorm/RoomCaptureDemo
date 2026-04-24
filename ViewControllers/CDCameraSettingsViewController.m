@@ -4,6 +4,7 @@ static NSString * const kCDSettingsFrameRate = @"CDSettingsFrameRate";
 static NSString * const kCDSettingsWhiteBalance = @"CDSettingsWhiteBalance";
 static NSString * const kCDSettingsShutterSpeed = @"CDSettingsShutterSpeed";
 static NSString * const kCDSettingsISO = @"CDSettingsISO";
+static NSString * const kCDSettingsISOAuto = @"CDSettingsISOAuto";
 static NSString * const kCDSettingsResolution = @"CDSettingsResolution";
 static NSString * const kCDSettingsCameraLens = @"CDSettingsCameraLens";
 
@@ -15,6 +16,7 @@ static NSString * const kCDSettingsCameraLens = @"CDSettingsCameraLens";
 @property (nonatomic, assign) float whiteBalance;
 @property (nonatomic, assign) float shutterSpeed;
 @property (nonatomic, assign) float iso;
+@property (nonatomic, assign) BOOL isoAuto;
 @property (nonatomic, assign) NSInteger resolution;
 @property (nonatomic, assign) NSInteger cameraLens;
 
@@ -74,6 +76,8 @@ static NSString * const kCDSettingsCameraLens = @"CDSettingsCameraLens";
     self.iso = [defaults floatForKey:kCDSettingsISO];
     if (self.iso == 0) self.iso = 320;
 
+    self.isoAuto = [defaults boolForKey:kCDSettingsISOAuto];
+
     self.resolution = [defaults integerForKey:kCDSettingsResolution];
     if (self.resolution == 0) self.resolution = 1; // 1 = 1080P
 
@@ -86,6 +90,7 @@ static NSString * const kCDSettingsCameraLens = @"CDSettingsCameraLens";
     [defaults setFloat:self.whiteBalance forKey:kCDSettingsWhiteBalance];
     [defaults setFloat:self.shutterSpeed forKey:kCDSettingsShutterSpeed];
     [defaults setFloat:self.iso forKey:kCDSettingsISO];
+    [defaults setBool:self.isoAuto forKey:kCDSettingsISOAuto];
     [defaults setInteger:self.resolution forKey:kCDSettingsResolution];
     [defaults setInteger:self.cameraLens forKey:kCDSettingsCameraLens];
     [defaults synchronize];
@@ -103,6 +108,7 @@ static NSString * const kCDSettingsCameraLens = @"CDSettingsCameraLens";
     self.whiteBalance = 4500;  // 4500K
     self.shutterSpeed = 250;   // 1/250
     self.iso = 320;           // ISO 320
+    self.isoAuto = NO;         // ISO manual
 
     [self.tableView reloadData];
 }
@@ -126,7 +132,7 @@ static NSString * const kCDSettingsCameraLens = @"CDSettingsCameraLens";
         case 2: return 1;
         case 3: return 1;
         case 4: return 1;
-        case 5: return 1;
+        case 5: return 2;
         default: return 0;
     }
 }
@@ -203,22 +209,32 @@ static NSString * const kCDSettingsCameraLens = @"CDSettingsCameraLens";
             [stepper.rightAnchor constraintEqualToAnchor:cell.contentView.rightAnchor constant:-16],
         ]];
     } else if (indexPath.section == 5) {
-        // ISO
-        cell.textLabel.text = [NSString stringWithFormat:@"%.0f", self.iso];
+        if (indexPath.row == 0) {
+            cell.textLabel.text = @"ISO 自动适应";
+            UISwitch *sw = [[UISwitch alloc] init];
+            sw.on = self.isoAuto;
+            [sw addTarget:self action:@selector(isoAutoChanged:) forControlEvents:UIControlEventValueChanged];
+            cell.accessoryView = sw;
+        } else {
+            cell.textLabel.text = self.isoAuto ? @"自动" : [NSString stringWithFormat:@"%.0f", self.iso];
+            cell.textLabel.textColor = self.isoAuto ? [UIColor systemGrayColor] : [UIColor labelColor];
 
-        UIStepper *stepper = [[UIStepper alloc] init];
-        stepper.minimumValue = 50;
-        stepper.maximumValue = 2000;
-        stepper.stepValue = 10;
-        stepper.value = self.iso;
-        stepper.translatesAutoresizingMaskIntoConstraints = NO;
-        stepper.tag = 303;
-        [stepper addTarget:self action:@selector(isoChanged:) forControlEvents:UIControlEventValueChanged];
-        [cell.contentView addSubview:stepper];
-        [NSLayoutConstraint activateConstraints:@[
-            [stepper.centerYAnchor constraintEqualToAnchor:cell.contentView.centerYAnchor],
-            [stepper.rightAnchor constraintEqualToAnchor:cell.contentView.rightAnchor constant:-16],
-        ]];
+            if (!self.isoAuto) {
+                UIStepper *stepper = [[UIStepper alloc] init];
+                stepper.minimumValue = 50;
+                stepper.maximumValue = 2000;
+                stepper.stepValue = 10;
+                stepper.value = self.iso;
+                stepper.translatesAutoresizingMaskIntoConstraints = NO;
+                stepper.tag = 303;
+                [stepper addTarget:self action:@selector(isoChanged:) forControlEvents:UIControlEventValueChanged];
+                [cell.contentView addSubview:stepper];
+                [NSLayoutConstraint activateConstraints:@[
+                    [stepper.centerYAnchor constraintEqualToAnchor:cell.contentView.centerYAnchor],
+                    [stepper.rightAnchor constraintEqualToAnchor:cell.contentView.rightAnchor constant:-16],
+                ]];
+            }
+        }
     }
 
     return cell;
@@ -236,7 +252,12 @@ static NSString * const kCDSettingsCameraLens = @"CDSettingsCameraLens";
 
 - (void)isoChanged:(UIStepper *)stepper {
     self.iso = stepper.value;
-    [self.tableView reloadRowsAtIndexPaths:@[[NSIndexPath indexPathForRow:0 inSection:5]] withRowAnimation:UITableViewRowAnimationNone];
+    [self.tableView reloadRowsAtIndexPaths:@[[NSIndexPath indexPathForRow:1 inSection:5]] withRowAnimation:UITableViewRowAnimationNone];
+}
+
+- (void)isoAutoChanged:(UISwitch *)sw {
+    self.isoAuto = sw.on;
+    [self.tableView reloadRowsAtIndexPaths:@[[NSIndexPath indexPathForRow:1 inSection:5]] withRowAnimation:UITableViewRowAnimationNone];
 }
 
 #pragma mark - UITableViewDelegate

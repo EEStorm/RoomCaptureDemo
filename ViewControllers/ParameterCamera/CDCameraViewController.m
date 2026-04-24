@@ -356,9 +356,15 @@
     if (shutterSpeed == 0) shutterSpeed = 250;
     float iso = [defaults floatForKey:@"CDSettingsISO"];
     if (iso == 0) iso = 320;
+    BOOL isoAuto = [defaults boolForKey:@"CDSettingsISOAuto"];
 
-    self.paramsLabel.text = [NSString stringWithFormat:@"%@ | %.0fK | 1/%.0f | ISO%.0f",
-                             lensNames[cameraLens], whiteBalance, shutterSpeed, iso];
+    if (isoAuto) {
+        self.paramsLabel.text = [NSString stringWithFormat:@"%@ | %.0fK | 1/%.0f | ISO自动",
+                                lensNames[cameraLens], whiteBalance, shutterSpeed];
+    } else {
+        self.paramsLabel.text = [NSString stringWithFormat:@"%@ | %.0fK | 1/%.0f | ISO%.0f",
+                                lensNames[cameraLens], whiteBalance, shutterSpeed, iso];
+    }
 }
 
 - (void)toggleRecording {

@@ -370,9 +370,6 @@ static CGFloat const kCDStereoBottomOverlayHeight = 156.0;
         return nil;
     }
     movieConnection.videoOrientation = AVCaptureVideoOrientationPortrait;
-    if (movieConnection.isVideoStabilizationSupported) {
-        movieConnection.preferredVideoStabilizationMode = AVCaptureVideoStabilizationModeAuto;
-    }
     [session addConnection:movieConnection];
 
     AVCaptureVideoPreviewLayer *previewLayer = [AVCaptureVideoPreviewLayer layerWithSessionWithNoConnection:session];
@@ -473,6 +470,8 @@ static CGFloat const kCDStereoBottomOverlayHeight = 156.0;
     float targetISO = [defaults floatForKey:CDStereoSettingsISOKey];
     if (targetISO == 0) targetISO = 320.0f;
 
+    BOOL isoAuto = [defaults boolForKey:CDStereoSettingsISOAutoKey];
+
     NSError *error = nil;
     if (![device lockForConfiguration:&error]) {
         NSLog(@"Stereo lockForConfiguration error: %@", error.localizedDescription);
@@ -483,13 +482,19 @@ static CGFloat const kCDStereoBottomOverlayHeight = 156.0;
     device.activeVideoMinFrameDuration = frameDuration;
     device.activeVideoMaxFrameDuration = frameDuration;
 
-    float minISO = device.activeFormat.minISO;
-    float maxISO = device.activeFormat.maxISO;
-    float iso = MIN(MAX(targetISO, minISO), maxISO);
-    CMTime shutterDuration = CMTimeMake(1, MAX(1, (int32_t)lrintf(shutterSpeed)));
+    if (isoAuto) {
+        if ([device isExposureModeSupported:AVCaptureExposureModeContinuousAutoExposure]) {
+            [device setExposureMode:AVCaptureExposureModeContinuousAutoExposure];
+        }
+    } else {
+        float minISO = device.activeFormat.minISO;
+        float maxISO = device.activeFormat.maxISO;
+        float iso = MIN(MAX(targetISO, minISO), maxISO);
+        CMTime shutterDuration = CMTimeMake(1, MAX(1, (int32_t)lrintf(shutterSpeed)));
 
-    if ([device isExposureModeSupported:AVCaptureExposureModeCustom]) {
-        [device setExposureModeCustomWithDuration:shutterDuration ISO:iso completionHandler:nil];
+        if ([device isExposureModeSupported:AVCaptureExposureModeCustom]) {
+            [device setExposureModeCustomWithDuration:shutterDuration ISO:iso completionHandler:nil];
+        }
     }
 
     if ([device isWhiteBalanceModeSupported:AVCaptureWhiteBalanceModeLocked]) {
@@ -533,11 +538,15 @@ static CGFloat const kCDStereoBottomOverlayHeight = 156.0;
     if (shutterSpeed == 0) shutterSpeed = 250.0f;
     float iso = [defaults floatForKey:CDStereoSettingsISOKey];
     if (iso == 0) iso = 320.0f;
+    BOOL isoAuto = [defaults boolForKey:CDStereoSettingsISOAutoKey];
 
-    self.paramsLabel.text = [NSString stringWithFormat:@"0.5x + 1.0x | %.0fK | 1/%.0f | ISO%.0f",
-                             whiteBalance,
-                             shutterSpeed,
-                             iso];
+    if (isoAuto) {
+        self.paramsLabel.text = [NSString stringWithFormat:@"0.5x + 1.0x | %.0fK | 1/%.0f | ISO自动",
+                                whiteBalance, shutterSpeed];
+    } else {
+        self.paramsLabel.text = [NSString stringWithFormat:@"0.5x + 1.0x | %.0fK | 1/%.0f | ISO%.0f",
+                                whiteBalance, shutterSpeed, iso];
+    }
 }
 
 - (void)installPreviewTiles {
