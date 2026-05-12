@@ -38,6 +38,11 @@
                                              selector:@selector(cameraDidReload)
                                                  name:@"CDCameraDidReload"
                                                object:nil];
+
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(exposureDidAutoLock)
+                                                 name:@"CDCameraExposureDidAutoLock"
+                                               object:nil];
 }
 
 - (void)dealloc {
@@ -54,6 +59,10 @@
         self.previewLayer.frame = previewContainer.bounds;
         [self updateSettingsLabels];
     });
+}
+
+- (void)exposureDidAutoLock {
+    [self updateSettingsLabels];
 }
 
 - (void)viewDidLayoutSubviews {
@@ -356,14 +365,37 @@
     if (shutterSpeed == 0) shutterSpeed = 250;
     float iso = [defaults floatForKey:@"CDSettingsISO"];
     if (iso == 0) iso = 320;
-    BOOL isoAuto = [defaults boolForKey:@"CDSettingsISOAuto"];
-
-    if (isoAuto) {
-        self.paramsLabel.text = [NSString stringWithFormat:@"%@ | %.0fK | 1/%.0f | ISO自动",
-                                lensNames[cameraLens], whiteBalance, shutterSpeed];
+    id exposureModeObj = [defaults objectForKey:@"CDSettingsExposureMode"];
+    NSInteger exposureMode = 0;
+    if (exposureModeObj == nil) {
+        BOOL legacyISOAuto = [defaults boolForKey:@"CDSettingsISOAuto"];
+        exposureMode = legacyISOAuto ? 1 : 0;
     } else {
+        exposureMode = [defaults integerForKey:@"CDSettingsExposureMode"];
+    }
+    float settleSeconds = [defaults floatForKey:@"CDSettingsAutoLockSettleSeconds"];
+    if (settleSeconds <= 0) settleSeconds = 1.0f;
+    NSTimeInterval lockedSeconds = [defaults doubleForKey:@"CDLastLockedExposureSeconds"];
+    float lockedISO = [defaults floatForKey:@"CDLastLockedISO"];
+
+    if (exposureMode == 0) {
         self.paramsLabel.text = [NSString stringWithFormat:@"%@ | %.0fK | 1/%.0f | ISO%.0f",
-                                lensNames[cameraLens], whiteBalance, shutterSpeed, iso];
+                                 lensNames[cameraLens], whiteBalance, shutterSpeed, iso];
+    } else if (exposureMode == 1) {
+        self.paramsLabel.text = [NSString stringWithFormat:@"%@ | %.0fK | ≤1/%.0f | ISO自适应",
+                                 lensNames[cameraLens], whiteBalance, shutterSpeed];
+    } else if (exposureMode == 2) {
+        if (lockedSeconds > 0 && lockedISO > 0) {
+            NSInteger roundedDenom = (NSInteger)llround(1.0 / lockedSeconds);
+            self.paramsLabel.text = [NSString stringWithFormat:@"%@ | %.0fK | ≤1/%.0f | 已锁定 1/%ld ISO%.0f",
+                                     lensNames[cameraLens], whiteBalance, shutterSpeed, (long)roundedDenom, lockedISO];
+        } else {
+            self.paramsLabel.text = [NSString stringWithFormat:@"%@ | %.0fK | ≤1/%.0f | 自动锁定(%.1fs)",
+                                     lensNames[cameraLens], whiteBalance, shutterSpeed, settleSeconds];
+        }
+    } else {
+        self.paramsLabel.text = [NSString stringWithFormat:@"%@ | %.0fK | ≤1/%.0f | 曝光模式%ld",
+                                 lensNames[cameraLens], whiteBalance, shutterSpeed, (long)exposureMode];
     }
 }
 

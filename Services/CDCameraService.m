@@ -14,8 +14,10 @@
 @property (nonatomic, assign) float whiteBalanceTemperature;
 @property (nonatomic, assign) CMTime shutterDuration;
 @property (nonatomic, assign) float targetISO;
-@property (nonatomic, assign) BOOL isoAuto;
+@property (nonatomic, assign) NSInteger exposureMode;
+@property (nonatomic, assign) NSTimeInterval autoLockSettleSeconds;
 @property (nonatomic, assign) NSInteger currentCameraLens;
+@property (nonatomic, assign) NSUInteger exposureAutoLockGeneration;
 
 @end
 
@@ -58,7 +60,16 @@
     _targetISO = [defaults floatForKey:@"CDSettingsISO"];
     if (_targetISO == 0) _targetISO = 320.0f;
 
-    _isoAuto = [defaults boolForKey:@"CDSettingsISOAuto"];
+    id exposureModeObj = [defaults objectForKey:@"CDSettingsExposureMode"];
+    if (exposureModeObj == nil) {
+        BOOL legacyISOAuto = [defaults boolForKey:@"CDSettingsISOAuto"];
+        _exposureMode = legacyISOAuto ? 1 : 0;
+    } else {
+        _exposureMode = [defaults integerForKey:@"CDSettingsExposureMode"];
+    }
+
+    _autoLockSettleSeconds = [defaults doubleForKey:@"CDSettingsAutoLockSettleSeconds"];
+    if (_autoLockSettleSeconds <= 0) _autoLockSettleSeconds = 1.0;
 
     _currentCameraLens = [defaults integerForKey:@"CDSettingsCameraLens"];
 }
@@ -254,20 +265,80 @@
     device.activeVideoMaxFrameDuration = frameDuration;
 
     // Set shutter and ISO
-    if (self.isoAuto) {
+    self.exposureAutoLockGeneration += 1;
+    NSUInteger autoLockGeneration = self.exposureAutoLockGeneration;
+
+    CMTime minExposureDuration = device.activeFormat.minExposureDuration;
+    CMTime maxExposureDuration = device.activeFormat.maxExposureDuration;
+    CMTime desiredDuration = self.shutterDuration;
+    if (CMTIME_IS_VALID(minExposureDuration) && CMTIME_COMPARE_INLINE(desiredDuration, <, minExposureDuration)) {
+        desiredDuration = minExposureDuration;
+    }
+    if (CMTIME_IS_VALID(maxExposureDuration) && CMTIME_COMPARE_INLINE(desiredDuration, >, maxExposureDuration)) {
+        desiredDuration = maxExposureDuration;
+    }
+
+    float minISO = device.activeFormat.minISO;
+    float maxISO = device.activeFormat.maxISO;
+    float iso = self.targetISO;
+    if (iso < minISO) iso = minISO;
+    if (iso > maxISO) iso = maxISO;
+
+    // Reset exposure duration limit unless the chosen mode needs it.
+    if ([device respondsToSelector:@selector(setActiveMaxExposureDuration:)]) {
+        device.activeMaxExposureDuration = maxExposureDuration;
+    }
+
+    if (self.exposureMode == 0) {
+        // Manual: fixed shutter + fixed ISO.
+        if ([device isExposureModeSupported:AVCaptureExposureModeCustom]) {
+            [device setExposureModeCustomWithDuration:desiredDuration ISO:iso completionHandler:nil];
+        }
+    } else if (self.exposureMode == 1) {
+        // Shutter-priority: lock exposure duration upper bound, let ISO adapt (AE).
+        if ([device respondsToSelector:@selector(setActiveMaxExposureDuration:)]) {
+            device.activeMaxExposureDuration = desiredDuration;
+        }
         if ([device isExposureModeSupported:AVCaptureExposureModeContinuousAutoExposure]) {
             [device setExposureMode:AVCaptureExposureModeContinuousAutoExposure];
         }
-    } else {
-        float minISO = device.activeFormat.minISO;
-        float maxISO = device.activeFormat.maxISO;
-        float iso = self.targetISO;
-        if (iso < minISO) iso = minISO;
-        if (iso > maxISO) iso = maxISO;
-
-        if ([device isExposureModeSupported:AVCaptureExposureModeCustom]) {
-            [device setExposureModeCustomWithDuration:self.shutterDuration ISO:iso completionHandler:nil];
+    } else if (self.exposureMode == 2) {
+        // Auto settle then lock: run AE (optionally with max duration cap), then lock current (duration + ISO).
+        if ([device respondsToSelector:@selector(setActiveMaxExposureDuration:)]) {
+            device.activeMaxExposureDuration = desiredDuration;
         }
+        if ([device isExposureModeSupported:AVCaptureExposureModeContinuousAutoExposure]) {
+            [device setExposureMode:AVCaptureExposureModeContinuousAutoExposure];
+        }
+        NSTimeInterval settle = MAX(0.1, self.autoLockSettleSeconds);
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(settle * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            if (autoLockGeneration != self.exposureAutoLockGeneration) return;
+            if (self.videoDevice != device) return;
+            if (![device isExposureModeSupported:AVCaptureExposureModeCustom]) return;
+
+            CMTime currentDuration = device.exposureDuration;
+            float currentISO = device.ISO;
+            float clampedISO = MIN(MAX(currentISO, device.activeFormat.minISO), device.activeFormat.maxISO);
+
+            NSError *innerError = nil;
+            BOOL innerLocked = [device lockForConfiguration:&innerError];
+            if (innerError || !innerLocked) {
+                NSLog(@"lockForConfiguration (auto-lock) error: %@", innerError.localizedDescription);
+                return;
+            }
+
+            [device setExposureModeCustomWithDuration:currentDuration ISO:clampedISO completionHandler:nil];
+            [device unlockForConfiguration];
+            NSTimeInterval lockedSeconds = CMTimeGetSeconds(currentDuration);
+            NSLog(@"Auto-settle lock applied: duration=%.4fs, ISO=%.0f", lockedSeconds, clampedISO);
+
+            NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+            [defaults setDouble:lockedSeconds forKey:@"CDLastLockedExposureSeconds"];
+            [defaults setFloat:clampedISO forKey:@"CDLastLockedISO"];
+            [defaults setDouble:[[NSDate date] timeIntervalSince1970] forKey:@"CDLastLockedTimestamp"];
+            [defaults synchronize];
+            [[NSNotificationCenter defaultCenter] postNotificationName:@"CDCameraExposureDidAutoLock" object:nil];
+        });
     }
 
     // Set white balance
@@ -294,17 +365,15 @@
 
     [device unlockForConfiguration];
 
-    if (self.isoAuto) {
-        NSLog(@"Camera configured: 1920x1080, %dfps, WB=%.0fK, ISO:自动",
-              resolvedFrameRate, self.whiteBalanceTemperature);
-    } else {
-        float minISO = device.activeFormat.minISO;
-        float maxISO = device.activeFormat.maxISO;
-        float iso = self.targetISO;
-        if (iso < minISO) iso = minISO;
-        if (iso > maxISO) iso = maxISO;
-        NSLog(@"Camera configured: 1920x1080, %dfps, WB=%.0fK, ISO:%.0f",
-              resolvedFrameRate, self.whiteBalanceTemperature, iso);
+    if (self.exposureMode == 0) {
+        NSLog(@"Camera configured: 1920x1080, %dfps, WB=%.0fK, 1/%.0f, ISO=%.0f",
+              resolvedFrameRate, self.whiteBalanceTemperature, (double)self.shutterDuration.timescale, iso);
+    } else if (self.exposureMode == 1) {
+        NSLog(@"Camera configured: 1920x1080, %dfps, WB=%.0fK, shutter<=1/%.0f, ISO:auto",
+              resolvedFrameRate, self.whiteBalanceTemperature, (double)self.shutterDuration.timescale);
+    } else if (self.exposureMode == 2) {
+        NSLog(@"Camera configured: 1920x1080, %dfps, WB=%.0fK, AE settle %.1fs then lock (shutter<=1/%.0f)",
+              resolvedFrameRate, self.whiteBalanceTemperature, self.autoLockSettleSeconds, (double)self.shutterDuration.timescale);
     }
 }
 

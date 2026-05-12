@@ -25,6 +25,15 @@
                          destinationBuilder:^UIViewController *{
                              return [[CDStereoCameraViewController alloc] init];
                          }],
+        [self navigationControllerWithTitle:@"房间采集Demo"
+                                      image:@"house.fill"
+                                buttonTitle:@"进入流程演示"
+                         destinationBuilder:^UIViewController *{
+                             Class hostClass = NSClassFromString(@"CDMeshCaptureHostViewController");
+                             UIViewController *hostViewController = hostClass ? [[hostClass alloc] init] : nil;
+                             hostViewController.title = @"房间采集Demo";
+                             return hostViewController ?: [[CDPendingTabViewController alloc] init];
+                         }],
         [self navigationControllerWithTitle:@"待定"
                                       image:@"ellipsis.circle"
                          destinationBuilder:^UIViewController *{
@@ -36,8 +45,18 @@
 - (UINavigationController *)navigationControllerWithTitle:(NSString *)title
                                                     image:(NSString *)imageName
                                        destinationBuilder:(UIViewController *(^)(void))builder {
+    return [self navigationControllerWithTitle:title
+                                         image:imageName
+                                   buttonTitle:@"进入拍摄页面"
+                            destinationBuilder:builder];
+}
+
+- (UINavigationController *)navigationControllerWithTitle:(NSString *)title
+                                                    image:(NSString *)imageName
+                                              buttonTitle:(NSString *)buttonTitle
+                                       destinationBuilder:(UIViewController *(^)(void))builder {
     CDFeatureHomeViewController *homeViewController = [[CDFeatureHomeViewController alloc] initWithTitle:title
-                                                                                                   buttonTitle:@"进入拍摄页面"
+                                                                                                   buttonTitle:buttonTitle
                                                                                           destinationBuilder:builder];
     UINavigationController *navigationController = [[UINavigationController alloc] initWithRootViewController:homeViewController];
     navigationController.tabBarItem.title = title;

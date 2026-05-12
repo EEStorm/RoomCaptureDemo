@@ -4,9 +4,13 @@ static NSString * const kCDSettingsFrameRate = @"CDSettingsFrameRate";
 static NSString * const kCDSettingsWhiteBalance = @"CDSettingsWhiteBalance";
 static NSString * const kCDSettingsShutterSpeed = @"CDSettingsShutterSpeed";
 static NSString * const kCDSettingsISO = @"CDSettingsISO";
-static NSString * const kCDSettingsISOAuto = @"CDSettingsISOAuto";
+static NSString * const kCDSettingsExposureMode = @"CDSettingsExposureMode";
+static NSString * const kCDSettingsAutoLockSettleSeconds = @"CDSettingsAutoLockSettleSeconds";
 static NSString * const kCDSettingsResolution = @"CDSettingsResolution";
 static NSString * const kCDSettingsCameraLens = @"CDSettingsCameraLens";
+static NSString * const kCDLastLockedExposureSeconds = @"CDLastLockedExposureSeconds";
+static NSString * const kCDLastLockedISO = @"CDLastLockedISO";
+static NSString * const kCDLastLockedTimestamp = @"CDLastLockedTimestamp";
 
 @interface CDCameraSettingsViewController () <UITableViewDataSource, UITableViewDelegate>
 
@@ -16,7 +20,8 @@ static NSString * const kCDSettingsCameraLens = @"CDSettingsCameraLens";
 @property (nonatomic, assign) float whiteBalance;
 @property (nonatomic, assign) float shutterSpeed;
 @property (nonatomic, assign) float iso;
-@property (nonatomic, assign) BOOL isoAuto;
+@property (nonatomic, assign) NSInteger exposureMode;
+@property (nonatomic, assign) float autoLockSettleSeconds;
 @property (nonatomic, assign) NSInteger resolution;
 @property (nonatomic, assign) NSInteger cameraLens;
 
@@ -32,6 +37,21 @@ static NSString * const kCDSettingsCameraLens = @"CDSettingsCameraLens";
     [self loadSettings];
     [self setupUI];
     [self setupNavigation];
+
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(exposureDidAutoLock)
+                                                 name:@"CDCameraExposureDidAutoLock"
+                                               object:nil];
+}
+
+- (void)dealloc {
+    [[NSNotificationCenter defaultCenter] removeObserver:self];
+}
+
+- (void)exposureDidAutoLock {
+    if (self.exposureMode == 2) {
+        [self.tableView reloadData];
+    }
 }
 
 - (void)setupNavigation {
@@ -76,7 +96,16 @@ static NSString * const kCDSettingsCameraLens = @"CDSettingsCameraLens";
     self.iso = [defaults floatForKey:kCDSettingsISO];
     if (self.iso == 0) self.iso = 320;
 
-    self.isoAuto = [defaults boolForKey:kCDSettingsISOAuto];
+    id exposureModeObj = [defaults objectForKey:kCDSettingsExposureMode];
+    if (exposureModeObj == nil) {
+        BOOL legacyISOAuto = [defaults boolForKey:@"CDSettingsISOAuto"];
+        self.exposureMode = legacyISOAuto ? 1 : 0;
+    } else {
+        self.exposureMode = [defaults integerForKey:kCDSettingsExposureMode];
+    }
+
+    self.autoLockSettleSeconds = [defaults floatForKey:kCDSettingsAutoLockSettleSeconds];
+    if (self.autoLockSettleSeconds <= 0) self.autoLockSettleSeconds = 1.0f;
 
     self.resolution = [defaults integerForKey:kCDSettingsResolution];
     if (self.resolution == 0) self.resolution = 1; // 1 = 1080P
@@ -90,7 +119,8 @@ static NSString * const kCDSettingsCameraLens = @"CDSettingsCameraLens";
     [defaults setFloat:self.whiteBalance forKey:kCDSettingsWhiteBalance];
     [defaults setFloat:self.shutterSpeed forKey:kCDSettingsShutterSpeed];
     [defaults setFloat:self.iso forKey:kCDSettingsISO];
-    [defaults setBool:self.isoAuto forKey:kCDSettingsISOAuto];
+    [defaults setInteger:self.exposureMode forKey:kCDSettingsExposureMode];
+    [defaults setFloat:self.autoLockSettleSeconds forKey:kCDSettingsAutoLockSettleSeconds];
     [defaults setInteger:self.resolution forKey:kCDSettingsResolution];
     [defaults setInteger:self.cameraLens forKey:kCDSettingsCameraLens];
     [defaults synchronize];
@@ -108,7 +138,8 @@ static NSString * const kCDSettingsCameraLens = @"CDSettingsCameraLens";
     self.whiteBalance = 4500;  // 4500K
     self.shutterSpeed = 250;   // 1/250
     self.iso = 320;           // ISO 320
-    self.isoAuto = NO;         // ISO manual
+    self.exposureMode = 0;     // Manual
+    self.autoLockSettleSeconds = 1.0f; // 1s settle then lock
 
     [self.tableView reloadData];
 }
@@ -132,7 +163,7 @@ static NSString * const kCDSettingsCameraLens = @"CDSettingsCameraLens";
         case 2: return 1;
         case 3: return 1;
         case 4: return 1;
-        case 5: return 2;
+        case 5: return (self.exposureMode == 2) ? 4 : 2;
         default: return 0;
     }
 }
@@ -143,9 +174,20 @@ static NSString * const kCDSettingsCameraLens = @"CDSettingsCameraLens";
         case 1: return @"分辨率";
         case 2: return @"帧率";
         case 3: return @"白平衡 (K)";
-        case 4: return @"快门速度";
-        case 5: return @"ISO";
+        case 4:
+            if (self.exposureMode == 0) return @"快门速度";
+            return @"快门速度上限 (防拖影)";
+        case 5: return @"曝光/ISO";
         default: return nil;
+    }
+}
+
+- (NSString *)exposureModeName:(NSInteger)mode {
+    switch (mode) {
+        case 0: return @"手动 (固定快门+ISO)";
+        case 1: return @"快门上限 + ISO自适应";
+        case 2: return @"自动测光后锁定";
+        default: return @"未知";
     }
 }
 
@@ -193,7 +235,11 @@ static NSString * const kCDSettingsCameraLens = @"CDSettingsCameraLens";
         ]];
     } else if (indexPath.section == 4) {
         // Shutter speed
-        cell.textLabel.text = [NSString stringWithFormat:@"1/%.0f", self.shutterSpeed];
+        if (self.exposureMode == 0) {
+            cell.textLabel.text = [NSString stringWithFormat:@"1/%.0f", self.shutterSpeed];
+        } else {
+            cell.textLabel.text = [NSString stringWithFormat:@"≤ 1/%.0f", self.shutterSpeed];
+        }
 
         UIStepper *stepper = [[UIStepper alloc] init];
         stepper.minimumValue = 30;
@@ -210,16 +256,16 @@ static NSString * const kCDSettingsCameraLens = @"CDSettingsCameraLens";
         ]];
     } else if (indexPath.section == 5) {
         if (indexPath.row == 0) {
-            cell.textLabel.text = @"ISO 自动适应";
-            UISwitch *sw = [[UISwitch alloc] init];
-            sw.on = self.isoAuto;
-            [sw addTarget:self action:@selector(isoAutoChanged:) forControlEvents:UIControlEventValueChanged];
-            cell.accessoryView = sw;
-        } else {
-            cell.textLabel.text = self.isoAuto ? @"自动" : [NSString stringWithFormat:@"%.0f", self.iso];
-            cell.textLabel.textColor = self.isoAuto ? [UIColor systemGrayColor] : [UIColor labelColor];
+            cell.textLabel.text = @"曝光策略";
+            cell.detailTextLabel.text = [self exposureModeName:self.exposureMode];
+            cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+            cell.selectionStyle = UITableViewCellSelectionStyleDefault;
+        } else if (indexPath.row == 1) {
+            BOOL isoEditable = (self.exposureMode == 0);
+            cell.textLabel.text = isoEditable ? [NSString stringWithFormat:@"ISO %.0f", self.iso] : @"ISO 自动";
+            cell.textLabel.textColor = isoEditable ? [UIColor labelColor] : [UIColor systemGrayColor];
 
-            if (!self.isoAuto) {
+            if (isoEditable) {
                 UIStepper *stepper = [[UIStepper alloc] init];
                 stepper.minimumValue = 50;
                 stepper.maximumValue = 2000;
@@ -233,6 +279,43 @@ static NSString * const kCDSettingsCameraLens = @"CDSettingsCameraLens";
                     [stepper.centerYAnchor constraintEqualToAnchor:cell.contentView.centerYAnchor],
                     [stepper.rightAnchor constraintEqualToAnchor:cell.contentView.rightAnchor constant:-16],
                 ]];
+            }
+        } else if (indexPath.row == 2) {
+            cell.textLabel.text = [NSString stringWithFormat:@"锁定等待 %.1fs", self.autoLockSettleSeconds];
+
+            UIStepper *stepper = [[UIStepper alloc] init];
+            stepper.minimumValue = 0.2;
+            stepper.maximumValue = 5.0;
+            stepper.stepValue = 0.2;
+            stepper.value = self.autoLockSettleSeconds;
+            stepper.translatesAutoresizingMaskIntoConstraints = NO;
+            stepper.tag = 304;
+            [stepper addTarget:self action:@selector(autoLockSettleChanged:) forControlEvents:UIControlEventValueChanged];
+            [cell.contentView addSubview:stepper];
+            [NSLayoutConstraint activateConstraints:@[
+                [stepper.centerYAnchor constraintEqualToAnchor:cell.contentView.centerYAnchor],
+                [stepper.rightAnchor constraintEqualToAnchor:cell.contentView.rightAnchor constant:-16],
+            ]];
+        } else if (indexPath.row == 3) {
+            NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+            NSTimeInterval lockedSeconds = [defaults doubleForKey:kCDLastLockedExposureSeconds];
+            float lockedISO = [defaults floatForKey:kCDLastLockedISO];
+            NSTimeInterval ts = [defaults doubleForKey:kCDLastLockedTimestamp];
+
+            if (lockedSeconds > 0 && lockedISO > 0) {
+                double denom = 1.0 / lockedSeconds;
+                NSInteger roundedDenom = (NSInteger)llround(denom);
+                NSString *timeText = @"";
+                if (ts > 0) {
+                    NSDate *date = [NSDate dateWithTimeIntervalSince1970:ts];
+                    NSDateFormatter *fmt = [[NSDateFormatter alloc] init];
+                    fmt.dateFormat = @"HH:mm:ss";
+                    timeText = [NSString stringWithFormat:@" (%@)", [fmt stringFromDate:date]];
+                }
+                cell.textLabel.text = [NSString stringWithFormat:@"已锁定 1/%ld | ISO %.0f%@", (long)roundedDenom, lockedISO, timeText];
+            } else {
+                cell.textLabel.text = @"已锁定 --";
+                cell.textLabel.textColor = [UIColor systemGrayColor];
             }
         }
     }
@@ -255,9 +338,9 @@ static NSString * const kCDSettingsCameraLens = @"CDSettingsCameraLens";
     [self.tableView reloadRowsAtIndexPaths:@[[NSIndexPath indexPathForRow:1 inSection:5]] withRowAnimation:UITableViewRowAnimationNone];
 }
 
-- (void)isoAutoChanged:(UISwitch *)sw {
-    self.isoAuto = sw.on;
-    [self.tableView reloadRowsAtIndexPaths:@[[NSIndexPath indexPathForRow:1 inSection:5]] withRowAnimation:UITableViewRowAnimationNone];
+- (void)autoLockSettleChanged:(UIStepper *)stepper {
+    self.autoLockSettleSeconds = stepper.value;
+    [self.tableView reloadRowsAtIndexPaths:@[[NSIndexPath indexPathForRow:2 inSection:5]] withRowAnimation:UITableViewRowAnimationNone];
 }
 
 #pragma mark - UITableViewDelegate
@@ -271,7 +354,28 @@ static NSString * const kCDSettingsCameraLens = @"CDSettingsCameraLens";
         [self showResolutionPicker];
     } else if (indexPath.section == 2) {
         [self showFrameRatePicker];
+    } else if (indexPath.section == 5 && indexPath.row == 0) {
+        [self showExposureModePicker];
     }
+}
+
+- (void)showExposureModePicker {
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"选择曝光策略"
+                                                                   message:nil
+                                                            preferredStyle:UIAlertControllerStyleActionSheet];
+    NSArray<NSNumber *> *modes = @[@0, @1, @2];
+    for (NSNumber *modeObj in modes) {
+        NSInteger mode = modeObj.integerValue;
+        UIAlertAction *action = [UIAlertAction actionWithTitle:[self exposureModeName:mode]
+                                                         style:UIAlertActionStyleDefault
+                                                       handler:^(UIAlertAction *action) {
+            self.exposureMode = mode;
+            [self.tableView reloadData];
+        }];
+        [alert addAction:action];
+    }
+    [alert addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
+    [self presentViewController:alert animated:YES completion:nil];
 }
 
 - (void)showCameraLensPicker {
