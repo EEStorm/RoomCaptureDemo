@@ -31,17 +31,21 @@
 		8494A71F0472D1883844ADBF /* VideoPoseRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4DA18D87E38BC24A965D6B8 /* VideoPoseRecorder.swift */; };
 		854EAB2947327BAD6A396D01 /* SceneKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 9888C204A6582D5AD79F52E2 /* SceneKit.framework */; };
 		88B46FF30AA696AAF97EFA50 /* CameraPoseSample.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3DB3A5C7D258DE23C4E726C /* CameraPoseSample.swift */; };
+		9252B033CC7B2E0F85E35F0D /* CD3DGSCameraService.m in Sources */ = {isa = PBXBuildFile; fileRef = 47F1D9BBB6330F584F2D1054 /* CD3DGSCameraService.m */; };
 		959F756DE664F508525632D6 /* CDCameraSettingsViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = 423CA50CC27C68F3DB672107 /* CDCameraSettingsViewController.m */; };
+		963A8AD2FA0B556F305A483F /* CD3DGSVideoListViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = FA4F2DF2B9A154366DE6A361 /* CD3DGSVideoListViewController.m */; };
 		9AC81C167A47883702581175 /* MeshCaptureRecordStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B940E3F2440C393E02D0462E /* MeshCaptureRecordStore.swift */; };
 		9DBF5A13AD5F385CC6AE856A /* AppDelegate.m in Sources */ = {isa = PBXBuildFile; fileRef = 77CD7CCFEA220FCED7278D95 /* AppDelegate.m */; };
 		A0C80FEFE09A046D07097C9B /* AVFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = F5E01EBE98B32559E14C00B8 /* AVFoundation.framework */; };
 		A1B1721A90DF5E79B6917772 /* CoreMedia.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4BD7C5EB5BF95A993502A248 /* CoreMedia.framework */; };
 		A9220851B44249DA92421BC1 /* CDMeshCaptureListViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CEB82971720667517D321FA /* CDMeshCaptureListViewController.swift */; };
 		AE722A9E8A789EF01233F9DC /* StereoCaptureRecordStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69A8346B677AD2F9CF3AF4E9 /* StereoCaptureRecordStoreTests.swift */; };
+		B9AE5B21E8E66F664F7A683C /* CD3DGSMetricsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0FE6C047A7B0798FA6B2AD2 /* CD3DGSMetricsTests.swift */; };
 		BE0908859B8D489AC69AB6B8 /* CaptureSessionModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5BA094D6CB787297F110D80A /* CaptureSessionModel.swift */; };
 		C57B38DFCEFCAAC64F501291 /* CaptureReviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7FC144386A226212F6165802 /* CaptureReviewView.swift */; };
 		C9854FD1F83919D2835D6BEF /* CDMeshCaptureDetailViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 082EEE32784E9B7C4D522567 /* CDMeshCaptureDetailViewController.swift */; };
 		CA75CFB00D5CFA0A65C93098 /* SkyboxCoverageAccumulator.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2900D5D6AF2A90598252FA7 /* SkyboxCoverageAccumulator.swift */; };
+		CC68FAFEC09F4A32BA00EA6B /* CD3DGSCaptureViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = D7DBA5EAE315F90614F50CAE /* CD3DGSCaptureViewController.m */; };
 		CFF2260D245C1123D873018B /* SimpleZipWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF9721F113FEB9BF42CBE12C /* SimpleZipWriter.swift */; };
 		D0AC08FFE40D3BB9D607E8D1 /* ARKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = CEF1F5C9527A6ECC2E2293D0 /* ARKit.framework */; };
 		DB2B3DA81A4423EAE02B2FDF /* CDCameraViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = 9CCF320B4D2FB28E3CA3BD1F /* CDCameraViewController.m */; };
@@ -53,6 +57,7 @@
 		FF2A792285CD02D3A995B4CC /* CDVideoListViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = E59AB1E1300DBE5FA5B77ADC /* CDVideoListViewController.m */; };
 		FF5ECDF5A4FCBF277A215EAF /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20CCBC685097209922BF8350 /* ContentView.swift */; };
 		FFAC417D360ADF9046FB5049 /* Photos.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = F327FBC7003BF433B0B16D43 /* Photos.framework */; };
+		FFE5E07FAFCFDEFADFE1A7C8 /* CD3DGSMetrics.m in Sources */ = {isa = PBXBuildFile; fileRef = 88BF5C2F44ABECD521332B62 /* CD3DGSMetrics.m */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -70,19 +75,25 @@
 		082EEE32784E9B7C4D522567 /* CDMeshCaptureDetailViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CDMeshCaptureDetailViewController.swift; sourceTree = "<group>"; };
 		0AAE88B97D5213031E509854 /* DepthCoverageAccumulator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DepthCoverageAccumulator.swift; sourceTree = "<group>"; };
 		0FD9061BC50A7DA5DF7E8AB7 /* CDPendingTabViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = CDPendingTabViewController.h; sourceTree = "<group>"; };
+		104D5255A828E9DAD14E3071 /* CD3DGSCameraService.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = CD3DGSCameraService.h; sourceTree = "<group>"; };
 		20CCBC685097209922BF8350 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		20DD519B3C392BC3EDE0FF03 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		28058D6A1BACEBA3312FD759 /* CD3DGSMetrics.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = CD3DGSMetrics.h; sourceTree = "<group>"; };
 		354F72EA998F6BA3BB8D469A /* CDStereoCaptureListViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CDStereoCaptureListViewController.swift; sourceTree = "<group>"; };
 		37F8F36807E29CE39A3CF2D9 /* PointCloudAccumulator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PointCloudAccumulator.swift; sourceTree = "<group>"; };
+		3A902DF8D1E24B6B5B873349 /* CD3DGSCaptureViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = CD3DGSCaptureViewController.h; sourceTree = "<group>"; };
 		3CB574BA545BB9F800753E62 /* CDCameraViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = CDCameraViewController.h; sourceTree = "<group>"; };
 		3CEB82971720667517D321FA /* CDMeshCaptureListViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CDMeshCaptureListViewController.swift; sourceTree = "<group>"; };
 		40BC1B8AE0DEA7412230DF03 /* main.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = main.m; sourceTree = "<group>"; };
 		423CA50CC27C68F3DB672107 /* CDCameraSettingsViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = CDCameraSettingsViewController.m; sourceTree = "<group>"; };
 		43E1321D62512CEFF6A1A3D4 /* CDStereoCaptureDetailViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CDStereoCaptureDetailViewController.swift; sourceTree = "<group>"; };
+		47F1D9BBB6330F584F2D1054 /* CD3DGSCameraService.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = CD3DGSCameraService.m; sourceTree = "<group>"; };
 		4BD7C5EB5BF95A993502A248 /* CoreMedia.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreMedia.framework; path = System/Library/Frameworks/CoreMedia.framework; sourceTree = SDKROOT; };
 		516166F25DC1DCDB3317767E /* RenderMode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RenderMode.swift; sourceTree = "<group>"; };
+		51E2F5C7140B3B2D3FCF523E /* CaptureDemo-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "CaptureDemo-Bridging-Header.h"; sourceTree = "<group>"; };
 		55DF6A06A19924BA8F800B53 /* PlaneCoveragePainter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaneCoveragePainter.swift; sourceTree = "<group>"; };
 		5BA094D6CB787297F110D80A /* CaptureSessionModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureSessionModel.swift; sourceTree = "<group>"; };
+		5F836CA54F9DECE463CA7066 /* CD3DGSVideoListViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = CD3DGSVideoListViewController.h; sourceTree = "<group>"; };
 		643D08CFF99EF83A5EE8D712 /* CDCameraSettingsViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = CDCameraSettingsViewController.h; sourceTree = "<group>"; };
 		69A8346B677AD2F9CF3AF4E9 /* StereoCaptureRecordStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StereoCaptureRecordStoreTests.swift; sourceTree = "<group>"; };
 		6CDCD57447AA713C8F6BF9A8 /* CaptureDemo.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CaptureDemo.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -96,12 +107,14 @@
 		7FC144386A226212F6165802 /* CaptureReviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureReviewView.swift; sourceTree = "<group>"; };
 		8396906A6BE840C35DB97072 /* CaptureReviewModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureReviewModels.swift; sourceTree = "<group>"; };
 		84DFACB5EEDABF2F447435D6 /* CDStereoCameraViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = CDStereoCameraViewController.h; sourceTree = "<group>"; };
+		88BF5C2F44ABECD521332B62 /* CD3DGSMetrics.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = CD3DGSMetrics.m; sourceTree = "<group>"; };
 		88D9276DE8D9D43CC3D1DC9F /* CDMeshCameraViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = CDMeshCameraViewController.h; sourceTree = "<group>"; };
 		97ED26E9DB0ADA554DD83D90 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		9888C204A6582D5AD79F52E2 /* SceneKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; path = SceneKit.framework; sourceTree = "<group>"; };
 		9A68DC27A0463B2A4BFC1634 /* CDMeshCameraViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = CDMeshCameraViewController.m; sourceTree = "<group>"; };
 		9B513ED97A97505EF21CDE11 /* CDMainTabBarController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = CDMainTabBarController.h; sourceTree = "<group>"; };
 		9CCF320B4D2FB28E3CA3BD1F /* CDCameraViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = CDCameraViewController.m; sourceTree = "<group>"; };
+		A0FE6C047A7B0798FA6B2AD2 /* CD3DGSMetricsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CD3DGSMetricsTests.swift; sourceTree = "<group>"; };
 		A2FCE20E0A48EA43BDCC0271 /* MeshCaptureRecordStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeshCaptureRecordStoreTests.swift; sourceTree = "<group>"; };
 		AC22DBB2FB58DD7A696BFD9D /* CDStereoCameraSettingsViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = CDStereoCameraSettingsViewController.h; sourceTree = "<group>"; };
 		AC9B0B4C32E2B1A8D6AFAEF1 /* ARSCNViewContainer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ARSCNViewContainer.swift; sourceTree = "<group>"; };
@@ -117,6 +130,7 @@
 		CEF1F5C9527A6ECC2E2293D0 /* ARKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; path = ARKit.framework; sourceTree = "<group>"; };
 		D2900D5D6AF2A90598252FA7 /* SkyboxCoverageAccumulator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkyboxCoverageAccumulator.swift; sourceTree = "<group>"; };
 		D3DB3A5C7D258DE23C4E726C /* CameraPoseSample.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraPoseSample.swift; sourceTree = "<group>"; };
+		D7DBA5EAE315F90614F50CAE /* CD3DGSCaptureViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = CD3DGSCaptureViewController.m; sourceTree = "<group>"; };
 		DC5E8B907DE8ED89E5CFC684 /* MeshOBJExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeshOBJExporter.swift; sourceTree = "<group>"; };
 		E4E9579EE100200D79939E05 /* CDStereoCameraSettingsViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = CDStereoCameraSettingsViewController.m; sourceTree = "<group>"; };
 		E59AB1E1300DBE5FA5B77ADC /* CDVideoListViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = CDVideoListViewController.m; sourceTree = "<group>"; };
@@ -126,6 +140,7 @@
 		F327FBC7003BF433B0B16D43 /* Photos.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; path = Photos.framework; sourceTree = "<group>"; };
 		F57A23658EDA20131C3B6CFA /* AppDelegate.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AppDelegate.h; sourceTree = "<group>"; };
 		F5E01EBE98B32559E14C00B8 /* AVFoundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; path = AVFoundation.framework; sourceTree = "<group>"; };
+		FA4F2DF2B9A154366DE6A361 /* CD3DGSVideoListViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = CD3DGSVideoListViewController.m; sourceTree = "<group>"; };
 		FF9721F113FEB9BF42CBE12C /* SimpleZipWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SimpleZipWriter.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -209,9 +224,20 @@
 			name = Frameworks;
 			sourceTree = "<group>";
 		};
+		3BE691F3B2DEBC01CBE21349 /* RoomShootFlow */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = RoomShootFlow;
+			sourceTree = "<group>";
+		};
 		44F5D41F3370F88ECCE9CBF8 /* Services */ = {
 			isa = PBXGroup;
 			children = (
+				104D5255A828E9DAD14E3071 /* CD3DGSCameraService.h */,
+				47F1D9BBB6330F584F2D1054 /* CD3DGSCameraService.m */,
+				28058D6A1BACEBA3312FD759 /* CD3DGSMetrics.h */,
+				88BF5C2F44ABECD521332B62 /* CD3DGSMetrics.m */,
 				AF5CD9AF61E013B8DEB60BDD /* CDCameraService.h */,
 				CCF8337DEE9500D59AF6EFEB /* CDCameraService.m */,
 			);
@@ -234,6 +260,7 @@
 			children = (
 				D8A4CD131E87851910D16D03 /* MeshCamera */,
 				2050DB0E59ACF1F721773894 /* StereoCamera */,
+				DB20958E116DE0F46070D1C2 /* ThreeDGSCapture */,
 			);
 			path = CaptureDemoTests;
 			sourceTree = "<group>";
@@ -264,6 +291,17 @@
 				392A30772B98819E0BF152B2 /* Frameworks */,
 				DE765E517D2253A84D21EFF1 /* Products */,
 			);
+			sourceTree = "<group>";
+		};
+		A34838CABFB2C513A656BB4A /* ThreeDGSCapture */ = {
+			isa = PBXGroup;
+			children = (
+				3A902DF8D1E24B6B5B873349 /* CD3DGSCaptureViewController.h */,
+				D7DBA5EAE315F90614F50CAE /* CD3DGSCaptureViewController.m */,
+				5F836CA54F9DECE463CA7066 /* CD3DGSVideoListViewController.h */,
+				FA4F2DF2B9A154366DE6A361 /* CD3DGSVideoListViewController.m */,
+			);
+			path = ThreeDGSCapture;
 			sourceTree = "<group>";
 		};
 		BBF11E7175119BE63F0CDEE6 /* App */ = {
@@ -299,7 +337,9 @@
 				C70A8CEFB3620C5C7D5BDDC4 /* MeshCamera */,
 				F301EBE36984D43737F57F79 /* ParameterCamera */,
 				2E7C4BF7E35C078837B41180 /* PendingTab */,
+				3BE691F3B2DEBC01CBE21349 /* RoomShootFlow */,
 				6A15515B6E494A67003A0FFD /* StereoCamera */,
+				A34838CABFB2C513A656BB4A /* ThreeDGSCapture */,
 			);
 			path = ViewControllers;
 			sourceTree = "<group>";
@@ -310,6 +350,14 @@
 				A2FCE20E0A48EA43BDCC0271 /* MeshCaptureRecordStoreTests.swift */,
 			);
 			path = MeshCamera;
+			sourceTree = "<group>";
+		};
+		DB20958E116DE0F46070D1C2 /* ThreeDGSCapture */ = {
+			isa = PBXGroup;
+			children = (
+				A0FE6C047A7B0798FA6B2AD2 /* CD3DGSMetricsTests.swift */,
+			);
+			path = ThreeDGSCapture;
 			sourceTree = "<group>";
 		};
 		DE765E517D2253A84D21EFF1 /* Products */ = {
@@ -344,6 +392,7 @@
 		FF831BC9F7883F5EAF5A32AC /* CaptureDemo */ = {
 			isa = PBXGroup;
 			children = (
+				51E2F5C7140B3B2D3FCF523E /* CaptureDemo-Bridging-Header.h */,
 				20DD519B3C392BC3EDE0FF03 /* Info.plist */,
 			);
 			path = CaptureDemo;
@@ -436,6 +485,10 @@
 			files = (
 				4E521DE7D962F3945DEBE355 /* ARSCNViewContainer.swift in Sources */,
 				9DBF5A13AD5F385CC6AE856A /* AppDelegate.m in Sources */,
+				9252B033CC7B2E0F85E35F0D /* CD3DGSCameraService.m in Sources */,
+				CC68FAFEC09F4A32BA00EA6B /* CD3DGSCaptureViewController.m in Sources */,
+				FFE5E07FAFCFDEFADFE1A7C8 /* CD3DGSMetrics.m in Sources */,
+				963A8AD2FA0B556F305A483F /* CD3DGSVideoListViewController.m in Sources */,
 				3D38B0DDB5BCBA64EC3BA2B1 /* CDCameraService.m in Sources */,
 				959F756DE664F508525632D6 /* CDCameraSettingsViewController.m in Sources */,
 				DB2B3DA81A4423EAE02B2FDF /* CDCameraViewController.m in Sources */,
@@ -478,6 +531,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B9AE5B21E8E66F664F7A683C /* CD3DGSMetricsTests.swift in Sources */,
 				671CAEC0B8B63F9754438101 /* MeshCaptureRecordStoreTests.swift in Sources */,
 				AE722A9E8A789EF01233F9DC /* StereoCaptureRecordStoreTests.swift in Sources */,
 			);
@@ -513,8 +567,9 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.example.captureDemo123;
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.captureDemo111;
 				SDKROOT = iphoneos;
+				SWIFT_OBJC_BRIDGING_HEADER = "CaptureDemo/CaptureDemo-Bridging-Header.h";
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Debug;
@@ -538,8 +593,9 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.example.captureDemo123;
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.captureDemo111;
 				SDKROOT = iphoneos;
+				SWIFT_OBJC_BRIDGING_HEADER = "CaptureDemo/CaptureDemo-Bridging-Header.h";
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Release;

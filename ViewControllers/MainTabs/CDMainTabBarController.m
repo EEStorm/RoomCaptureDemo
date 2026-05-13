@@ -4,6 +4,7 @@
 #import "CDMeshCameraViewController.h"
 #import "CDPendingTabViewController.h"
 #import "CDStereoCameraViewController.h"
+#import "CD3DGSCaptureViewController.h"
 
 @implementation CDMainTabBarController
 
@@ -37,7 +38,7 @@
         [self navigationControllerWithTitle:@"待定"
                                       image:@"ellipsis.circle"
                          destinationBuilder:^UIViewController *{
-                             return [[CDPendingTabViewController alloc] init];
+                             return [[CD3DGSCaptureViewController alloc] init];
                          }]
     ];
 }

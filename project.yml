@@ -48,6 +48,7 @@ targets:
         INFOPLIST_KEY_NSMicrophoneUsageDescription: "录制环境声音"
         INFOPLIST_KEY_CFBundleDisplayName: "相机采集"
         CLANG_ENABLE_OBJC_ARC: YES
+        SWIFT_OBJC_BRIDGING_HEADER: "CaptureDemo/CaptureDemo-Bridging-Header.h"
     info:
       path: CaptureDemo/Info.plist
       properties:
