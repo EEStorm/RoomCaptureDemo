@@ -28,6 +28,7 @@
 		7B213CC30738A51E8535D759 /* CaptureReviewModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8396906A6BE840C35DB97072 /* CaptureReviewModels.swift */; };
 		7CCF9461ADCF0C11E0ADE551 /* RenderMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 516166F25DC1DCDB3317767E /* RenderMode.swift */; };
 		8226CC93FC928695F7076133 /* PointCloudAccumulator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37F8F36807E29CE39A3CF2D9 /* PointCloudAccumulator.swift */; };
+		845B1CC69B89DD8385AF1D80 /* CDVideoConfirmViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = 5F0D4EDE52A5A57954B12B55 /* CDVideoConfirmViewController.m */; };
 		8494A71F0472D1883844ADBF /* VideoPoseRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4DA18D87E38BC24A965D6B8 /* VideoPoseRecorder.swift */; };
 		854EAB2947327BAD6A396D01 /* SceneKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 9888C204A6582D5AD79F52E2 /* SceneKit.framework */; };
 		88B46FF30AA696AAF97EFA50 /* CameraPoseSample.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3DB3A5C7D258DE23C4E726C /* CameraPoseSample.swift */; };
@@ -93,6 +94,7 @@
 		51E2F5C7140B3B2D3FCF523E /* CaptureDemo-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "CaptureDemo-Bridging-Header.h"; sourceTree = "<group>"; };
 		55DF6A06A19924BA8F800B53 /* PlaneCoveragePainter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaneCoveragePainter.swift; sourceTree = "<group>"; };
 		5BA094D6CB787297F110D80A /* CaptureSessionModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureSessionModel.swift; sourceTree = "<group>"; };
+		5F0D4EDE52A5A57954B12B55 /* CDVideoConfirmViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = CDVideoConfirmViewController.m; sourceTree = "<group>"; };
 		5F836CA54F9DECE463CA7066 /* CD3DGSVideoListViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = CD3DGSVideoListViewController.h; sourceTree = "<group>"; };
 		643D08CFF99EF83A5EE8D712 /* CDCameraSettingsViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = CDCameraSettingsViewController.h; sourceTree = "<group>"; };
 		69A8346B677AD2F9CF3AF4E9 /* StereoCaptureRecordStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StereoCaptureRecordStoreTests.swift; sourceTree = "<group>"; };
@@ -130,6 +132,7 @@
 		CEF1F5C9527A6ECC2E2293D0 /* ARKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; path = ARKit.framework; sourceTree = "<group>"; };
 		D2900D5D6AF2A90598252FA7 /* SkyboxCoverageAccumulator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkyboxCoverageAccumulator.swift; sourceTree = "<group>"; };
 		D3DB3A5C7D258DE23C4E726C /* CameraPoseSample.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraPoseSample.swift; sourceTree = "<group>"; };
+		D744383ED46631E96E43C64F /* CDVideoConfirmViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = CDVideoConfirmViewController.h; sourceTree = "<group>"; };
 		D7DBA5EAE315F90614F50CAE /* CD3DGSCaptureViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = CD3DGSCaptureViewController.m; sourceTree = "<group>"; };
 		DC5E8B907DE8ED89E5CFC684 /* MeshOBJExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeshOBJExporter.swift; sourceTree = "<group>"; };
 		E4E9579EE100200D79939E05 /* CDStereoCameraSettingsViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = CDStereoCameraSettingsViewController.m; sourceTree = "<group>"; };
@@ -227,6 +230,8 @@
 		3BE691F3B2DEBC01CBE21349 /* RoomShootFlow */ = {
 			isa = PBXGroup;
 			children = (
+				D744383ED46631E96E43C64F /* CDVideoConfirmViewController.h */,
+				5F0D4EDE52A5A57954B12B55 /* CDVideoConfirmViewController.m */,
 			);
 			path = RoomShootFlow;
 			sourceTree = "<group>";
@@ -446,6 +451,11 @@
 			attributes = {
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1500;
+				TargetAttributes = {
+					7138C473A2A5AAB11DCD1A99 = {
+						ProvisioningStyle = Automatic;
+					};
+				};
 			};
 			buildConfigurationList = 24A07EF4E25983AA6B16A594 /* Build configuration list for PBXProject "CaptureDemo" */;
 			developmentRegion = en;
@@ -504,6 +514,7 @@
 				2AE167C5CB8DC5669C5E6CB9 /* CDStereoCameraViewController.m in Sources */,
 				541BAB3129629D7897823A7C /* CDStereoCaptureDetailViewController.swift in Sources */,
 				EDAF6C813A686F0BECAF7D58 /* CDStereoCaptureListViewController.swift in Sources */,
+				845B1CC69B89DD8385AF1D80 /* CDVideoConfirmViewController.m in Sources */,
 				FF2A792285CD02D3A995B4CC /* CDVideoListViewController.m in Sources */,
 				88B46FF30AA696AAF97EFA50 /* CameraPoseSample.swift in Sources */,
 				7B213CC30738A51E8535D759 /* CaptureReviewModels.swift in Sources */,
@@ -553,7 +564,9 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_OBJC_ARC = YES;
-				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_IDENTITY = "-";
+				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_TEAM = 2867UNTJFF;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
@@ -579,7 +592,9 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_OBJC_ARC = YES;
-				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_IDENTITY = "-";
+				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_TEAM = 2867UNTJFF;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",

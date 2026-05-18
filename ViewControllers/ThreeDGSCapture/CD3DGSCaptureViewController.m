@@ -3,6 +3,7 @@
 #import "CD3DGSMetrics.h"
 #import "CD3DGSVideoListViewController.h"
 #import "CDCameraSettingsViewController.h"
+#import <AVFoundation/AVFoundation.h>
 #import <CoreMotion/CoreMotion.h>
 #import <Vision/Vision.h>
 #import <QuartzCore/QuartzCore.h>
@@ -11,6 +12,7 @@
     double _translationRatios[12];
 }
 
+@property (nonatomic, assign) BOOL previousNavigationBarHidden;
 @property (nonatomic, strong) AVCaptureVideoPreviewLayer *previewLayer;
 @property (nonatomic, strong) UIView *topBar;
 @property (nonatomic, strong) UILabel *durationLabel;
@@ -24,6 +26,7 @@
 
 @property (nonatomic, strong) UILabel *translationLabel;
 @property (nonatomic, strong) UILabel *rotationLabel;
+@property (nonatomic, strong) UILabel *blurLabel;
 @property (nonatomic, strong) UILabel *shakeLabel;
 @property (nonatomic, strong) UIView *warningBorderView;
 @property (nonatomic, strong) UIView *metricsContainer;
@@ -49,6 +52,12 @@
 @property (nonatomic, assign) NSUInteger translationRatioCount;
 @property (nonatomic, assign) NSUInteger translationRatioIndex;
 
+@property (nonatomic, strong) UILabel *toastLabel;
+@property (nonatomic, strong) NSTimer *toastHideTimer;
+@property (nonatomic, strong) NSMutableDictionary<NSString *, NSNumber *> *lastToastAtByKey;
+@property (nonatomic, strong) AVSpeechSynthesizer *speechSynthesizer;
+@property (nonatomic, strong) NSMutableDictionary<NSString *, NSNumber *> *lastSpokenAtByKey;
+
 @end
 
 @implementation CD3DGSCaptureViewController
@@ -61,6 +70,9 @@
     self.motionQueue = [[NSOperationQueue alloc] init];
     self.motionQueue.maxConcurrentOperationCount = 1;
     self.accelWindow = [NSMutableArray array];
+    self.lastToastAtByKey = [NSMutableDictionary dictionary];
+    self.lastSpokenAtByKey = [NSMutableDictionary dictionary];
+    self.speechSynthesizer = [[AVSpeechSynthesizer alloc] init];
     [self setupUI];
     [self setupCamera];
 
@@ -76,6 +88,7 @@
 
 - (void)dealloc {
     [[NSNotificationCenter defaultCenter] removeObserver:self];
+    [self.toastHideTimer invalidate];
     if (_analysisBufferA) {
         CVPixelBufferRelease(_analysisBufferA);
         _analysisBufferA = nil;
@@ -128,10 +141,16 @@
 
     self.metricsContainer.frame = CGRectMake(12, safeTop + 112, screenWidth - 24, 56);
     self.shakeLabel.frame = CGRectMake((screenWidth - 160) / 2, safeTop + 176, 160, 32);
+    CGFloat toastY = self.view.bounds.size.height - self.view.safeAreaInsets.bottom - 180 - 12 - 44;
+    self.toastLabel.frame = CGRectMake(16, toastY, screenWidth - 32, 44);
 }
 
 - (void)viewWillAppear:(BOOL)animated {
     [super viewWillAppear:animated];
+    if (self.navigationController) {
+        self.previousNavigationBarHidden = self.navigationController.navigationBarHidden;
+        [self.navigationController setNavigationBarHidden:YES animated:animated];
+    }
     [[CD3DGSCameraService shared] startSession];
     [self startUITimer];
     [self startMotionUpdates];
@@ -140,6 +159,9 @@
 
 - (void)viewWillDisappear:(BOOL)animated {
     [super viewWillDisappear:animated];
+    if ((self.isMovingFromParentViewController || self.isBeingDismissed) && self.navigationController) {
+        [self.navigationController setNavigationBarHidden:self.previousNavigationBarHidden animated:animated];
+    }
     [[CD3DGSCameraService shared] stopSession];
     [[CD3DGSCameraService shared] setSampleBufferHandler:nil];
     [self stopMotionUpdates];
@@ -251,7 +273,7 @@
     UITapGestureRecognizer *tap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(lockTagTapped)];
     [self.lockStatusTag addGestureRecognizer:tap];
 
-    self.translationLabel = [[UILabel alloc] initWithFrame:CGRectMake(12, 30, 150, 22)];
+    self.translationLabel = [[UILabel alloc] initWithFrame:CGRectMake(12, 30, 120, 22)];
     self.translationLabel.text = @"移动 不可用";
     self.translationLabel.font = [UIFont systemFontOfSize:11 weight:UIFontWeightSemibold];
     self.translationLabel.textAlignment = NSTextAlignmentCenter;
@@ -259,7 +281,7 @@
     self.translationLabel.clipsToBounds = YES;
     [self.metricsContainer addSubview:self.translationLabel];
 
-    self.rotationLabel = [[UILabel alloc] initWithFrame:CGRectMake(CGRectGetMaxX(self.translationLabel.frame) + 8, 30, 120, 22)];
+    self.rotationLabel = [[UILabel alloc] initWithFrame:CGRectMake(CGRectGetMaxX(self.translationLabel.frame) + 8, 30, 96, 22)];
     self.rotationLabel.text = @"旋转 --";
     self.rotationLabel.font = [UIFont systemFontOfSize:11 weight:UIFontWeightSemibold];
     self.rotationLabel.textAlignment = NSTextAlignmentCenter;
@@ -267,7 +289,15 @@
     self.rotationLabel.clipsToBounds = YES;
     [self.metricsContainer addSubview:self.rotationLabel];
 
-    UILabel *noteLabel = [[UILabel alloc] initWithFrame:CGRectMake(CGRectGetMaxX(self.rotationLabel.frame) + 8, 30, self.metricsContainer.bounds.size.width - CGRectGetMaxX(self.rotationLabel.frame) - 20, 22)];
+    self.blurLabel = [[UILabel alloc] initWithFrame:CGRectMake(CGRectGetMaxX(self.rotationLabel.frame) + 8, 30, 84, 22)];
+    self.blurLabel.text = @"清晰 不可判";
+    self.blurLabel.font = [UIFont systemFontOfSize:11 weight:UIFontWeightSemibold];
+    self.blurLabel.textAlignment = NSTextAlignmentCenter;
+    self.blurLabel.layer.cornerRadius = 2;
+    self.blurLabel.clipsToBounds = YES;
+    [self.metricsContainer addSubview:self.blurLabel];
+
+    UILabel *noteLabel = [[UILabel alloc] initWithFrame:CGRectMake(CGRectGetMaxX(self.blurLabel.frame) + 8, 30, self.metricsContainer.bounds.size.width - CGRectGetMaxX(self.blurLabel.frame) - 20, 22)];
     noteLabel.autoresizingMask = UIViewAutoresizingFlexibleWidth;
     noteLabel.text = @"慢走、少转、稳拿";
     noteLabel.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.70];
@@ -284,6 +314,18 @@
     self.shakeLabel.textAlignment = NSTextAlignmentCenter;
     self.shakeLabel.hidden = YES;
     [self.view addSubview:self.shakeLabel];
+
+    self.toastLabel = [[UILabel alloc] initWithFrame:CGRectMake(16, self.view.bounds.size.height - 180 - 12 - 44, screenWidth - 32, 44)];
+    self.toastLabel.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleTopMargin;
+    self.toastLabel.backgroundColor = [[UIColor blackColor] colorWithAlphaComponent:0.72];
+    self.toastLabel.textColor = [UIColor whiteColor];
+    self.toastLabel.font = [UIFont systemFontOfSize:13 weight:UIFontWeightSemibold];
+    self.toastLabel.textAlignment = NSTextAlignmentCenter;
+    self.toastLabel.numberOfLines = 2;
+    self.toastLabel.layer.cornerRadius = 12;
+    self.toastLabel.clipsToBounds = YES;
+    self.toastLabel.hidden = YES;
+    [self.view addSubview:self.toastLabel];
 
     self.hintLabel = [[UILabel alloc] initWithFrame:CGRectMake(0, 20, screenWidth, 20)];
     self.hintLabel.text = @"点击录制按钮开始采集";
@@ -319,6 +361,8 @@
 
     [self applyTrafficLight:CD3DGSTrafficLightUnavailable toTag:self.translationLabel prefix:@"移动"];
     [self applyTrafficLight:CD3DGSTrafficLightUnavailable toTag:self.rotationLabel prefix:@"旋转"];
+    [self applyTrafficLight:CD3DGSTrafficLightUnavailable toTag:self.blurLabel prefix:nil];
+    self.blurLabel.text = @"清晰 不可判";
     [self updateLockStatusTag];
 }
 
@@ -403,6 +447,108 @@
     });
 }
 
+- (void)showToast:(NSString *)message key:(NSString *)key minInterval:(NSTimeInterval)minInterval {
+    if (message.length == 0 || key.length == 0) {
+        return;
+    }
+    NSTimeInterval now = [[NSDate date] timeIntervalSince1970];
+    NSTimeInterval last = [self.lastToastAtByKey[key] doubleValue];
+    if (last > 0 && (now - last) < minInterval) {
+        return;
+    }
+    self.lastToastAtByKey[key] = @(now);
+
+    dispatch_async(dispatch_get_main_queue(), ^{
+        self.toastLabel.text = message;
+        self.toastLabel.hidden = NO;
+        self.toastLabel.alpha = 1.0;
+
+        [self.toastHideTimer invalidate];
+        __weak typeof(self) weakSelf = self;
+        self.toastHideTimer = [NSTimer scheduledTimerWithTimeInterval:1.6 repeats:NO block:^(NSTimer * _Nonnull timer) {
+            __strong typeof(weakSelf) self = weakSelf;
+            if (!self) return;
+            [UIView animateWithDuration:0.18 animations:^{
+                self.toastLabel.alpha = 0.0;
+            } completion:^(BOOL finished) {
+                self.toastLabel.hidden = YES;
+                self.toastLabel.alpha = 1.0;
+            }];
+        }];
+    });
+}
+
+- (void)speak:(NSString *)message key:(NSString *)key minInterval:(NSTimeInterval)minInterval {
+    if (message.length == 0 || key.length == 0) {
+        return;
+    }
+    NSTimeInterval now = [[NSDate date] timeIntervalSince1970];
+    NSTimeInterval last = [self.lastSpokenAtByKey[key] doubleValue];
+    if (last > 0 && (now - last) < minInterval) {
+        return;
+    }
+    self.lastSpokenAtByKey[key] = @(now);
+
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (self.speechSynthesizer.isSpeaking) {
+            return;
+        }
+        AVSpeechUtterance *utterance = [[AVSpeechUtterance alloc] initWithString:message];
+        utterance.rate = AVSpeechUtteranceDefaultSpeechRate;
+        utterance.pitchMultiplier = 1.0;
+        utterance.volume = 0.9;
+        [self.speechSynthesizer speakUtterance:utterance];
+    });
+}
+
+- (void)grayStatsForBuffer:(CVPixelBufferRef)grayBuffer mean:(double *)meanOut std:(double *)stdOut min:(uint8_t *)minOut max:(uint8_t *)maxOut {
+    if (meanOut) *meanOut = -1;
+    if (stdOut) *stdOut = -1;
+    if (minOut) *minOut = 0;
+    if (maxOut) *maxOut = 0;
+    if (!grayBuffer) return;
+
+    CVPixelBufferLockBaseAddress(grayBuffer, kCVPixelBufferLock_ReadOnly);
+    size_t width = CVPixelBufferGetWidth(grayBuffer);
+    size_t height = CVPixelBufferGetHeight(grayBuffer);
+    size_t bytesPerRow = CVPixelBufferGetBytesPerRow(grayBuffer);
+    const uint8_t *base = (const uint8_t *)CVPixelBufferGetBaseAddress(grayBuffer);
+    if (!base || width == 0 || height == 0) {
+        CVPixelBufferUnlockBaseAddress(grayBuffer, kCVPixelBufferLock_ReadOnly);
+        return;
+    }
+
+    double sum = 0;
+    double sumSq = 0;
+    size_t count = 0;
+    uint8_t minV = 255;
+    uint8_t maxV = 0;
+
+    for (size_t y = 0; y < height; y++) {
+        const uint8_t *row = base + y * bytesPerRow;
+        for (size_t x = 0; x < width; x++) {
+            uint8_t v = row[x];
+            sum += (double)v;
+            sumSq += (double)v * (double)v;
+            count += 1;
+            if (v < minV) minV = v;
+            if (v > maxV) maxV = v;
+        }
+    }
+
+    CVPixelBufferUnlockBaseAddress(grayBuffer, kCVPixelBufferLock_ReadOnly);
+
+    if (count == 0) return;
+    double mean = sum / (double)count;
+    double var = (sumSq / (double)count) - (mean * mean);
+    double std = var > 0 ? sqrt(var) : 0;
+
+    if (meanOut) *meanOut = mean;
+    if (stdOut) *stdOut = std;
+    if (minOut) *minOut = minV;
+    if (maxOut) *maxOut = maxV;
+}
+
 - (void)applyTrafficLight:(CD3DGSTrafficLight)light toTag:(UILabel *)tag prefix:(NSString * _Nullable)prefix {
     UIColor *textColor = nil;
     UIColor *bgColor = nil;
@@ -450,6 +596,15 @@
         case CD3DGSTrafficLightYellow: return @"偏快";
         case CD3DGSTrafficLightRed: return @"过快";
         case CD3DGSTrafficLightUnavailable: default: return @"不可用";
+    }
+}
+
+- (NSString *)blurTextForTrafficLight:(CD3DGSTrafficLight)light {
+    switch (light) {
+        case CD3DGSTrafficLightGreen: return @"清晰";
+        case CD3DGSTrafficLightYellow: return @"注意";
+        case CD3DGSTrafficLightRed: return @"模糊";
+        case CD3DGSTrafficLightUnavailable: default: return @"不可判";
     }
 }
 
@@ -515,6 +670,86 @@
             return;
         }
 
+        double lapVar = [self laplacianVarianceForGrayBuffer:writeBuffer];
+        double mean = -1;
+        double std = -1;
+        uint8_t minV = 0;
+        uint8_t maxV = 0;
+        [self grayStatsForBuffer:writeBuffer mean:&mean std:&std min:&minV max:&maxV];
+        double range = (double)maxV - (double)minV;
+
+        BOOL isLowLight = (mean >= 0 && mean < 35.0);
+        BOOL isLowTexture = (lapVar >= 0 && lapVar < 80.0);
+        BOOL isWhiteWall = (mean >= 0 && mean > 180.0 && std >= 0 && std < 12.0 && range < 40.0 && isLowTexture);
+
+        if (isLowLight) {
+            self.translationRatioCount = 0;
+            self.translationRatioIndex = 0;
+            dispatch_async(dispatch_get_main_queue(), ^{
+                self.translationLabel.text = @"移动 不可用（太暗）";
+                [self applyTrafficLight:CD3DGSTrafficLightUnavailable toTag:self.translationLabel prefix:nil];
+            });
+            [self showToast:@"光线太暗：先开灯/补光，再继续拍摄" key:@"low_light" minInterval:2.0];
+            [self speak:@"光线太暗，请开灯或补光后再拍" key:@"low_light" minInterval:6.0];
+            dispatch_async(dispatch_get_main_queue(), ^{
+                self.blurLabel.text = @"清晰 不可判";
+                [self applyTrafficLight:CD3DGSTrafficLightUnavailable toTag:self.blurLabel prefix:nil];
+            });
+            self.analysisUseAForWrite = !self.analysisUseAForWrite;
+            return;
+        }
+
+        if (isWhiteWall) {
+            self.translationRatioCount = 0;
+            self.translationRatioIndex = 0;
+            dispatch_async(dispatch_get_main_queue(), ^{
+                self.translationLabel.text = @"移动 不可用（白墙）";
+                [self applyTrafficLight:CD3DGSTrafficLightUnavailable toTag:self.translationLabel prefix:nil];
+            });
+            [self showToast:@"疑似白墙/纯色墙：对准门框/家具边，停 1 秒再走" key:@"white_wall" minInterval:2.0];
+            [self speak:@"请对准门框或家具边，停一秒再移动" key:@"white_wall" minInterval:8.0];
+            dispatch_async(dispatch_get_main_queue(), ^{
+                self.blurLabel.text = @"清晰 不可判";
+                [self applyTrafficLight:CD3DGSTrafficLightUnavailable toTag:self.blurLabel prefix:nil];
+            });
+            self.analysisUseAForWrite = !self.analysisUseAForWrite;
+            return;
+        }
+
+        if (isLowTexture) {
+            self.translationRatioCount = 0;
+            self.translationRatioIndex = 0;
+            dispatch_async(dispatch_get_main_queue(), ^{
+                self.translationLabel.text = @"移动 不可用（画面太平）";
+                [self applyTrafficLight:CD3DGSTrafficLightUnavailable toTag:self.translationLabel prefix:nil];
+            });
+            [self showToast:@"画面太平：对准门框/窗框/柜子边，停 1 秒再走" key:@"low_texture" minInterval:2.0];
+            [self speak:@"画面太平，请对准门框或家具边再移动" key:@"low_texture" minInterval:8.0];
+            dispatch_async(dispatch_get_main_queue(), ^{
+                self.blurLabel.text = @"清晰 不可判";
+                [self applyTrafficLight:CD3DGSTrafficLightUnavailable toTag:self.blurLabel prefix:nil];
+            });
+            self.analysisUseAForWrite = !self.analysisUseAForWrite;
+            return;
+        }
+
+        // Blur monitoring (only when not low light / not low texture).
+        CD3DGSTrafficLight blurLight = CD3DGSTrafficLightGreen;
+        if (lapVar >= 0 && lapVar < 140.0) {
+            blurLight = CD3DGSTrafficLightRed;
+        } else if (lapVar >= 0 && lapVar < 180.0) {
+            blurLight = CD3DGSTrafficLightYellow;
+        }
+        NSString *blurText = [self blurTextForTrafficLight:blurLight];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            self.blurLabel.text = [NSString stringWithFormat:@"清晰 %@", blurText];
+            [self applyTrafficLight:blurLight toTag:self.blurLabel prefix:nil];
+        });
+        if (blurLight == CD3DGSTrafficLightRed) {
+            [self showToast:@"画面模糊：请停一下，双手握稳后再继续" key:@"blur" minInterval:2.0];
+            [self speak:@"画面模糊，请停一下，握稳手机再继续" key:@"blur" minInterval:8.0];
+        }
+
         NSError *error = nil;
         VNTranslationalImageRegistrationRequest *request = [[VNTranslationalImageRegistrationRequest alloc] initWithTargetedCVPixelBuffer:readBuffer options:@{}];
         VNImageRequestHandler *handler = [[VNImageRequestHandler alloc] initWithCVPixelBuffer:writeBuffer options:@{}];
@@ -556,6 +791,44 @@
 
         self.analysisUseAForWrite = !self.analysisUseAForWrite;
     }];
+}
+
+- (double)laplacianVarianceForGrayBuffer:(CVPixelBufferRef)grayBuffer {
+    if (!grayBuffer) return -1;
+    CVPixelBufferLockBaseAddress(grayBuffer, kCVPixelBufferLock_ReadOnly);
+    size_t width = CVPixelBufferGetWidth(grayBuffer);
+    size_t height = CVPixelBufferGetHeight(grayBuffer);
+    size_t bytesPerRow = CVPixelBufferGetBytesPerRow(grayBuffer);
+    const uint8_t *base = (const uint8_t *)CVPixelBufferGetBaseAddress(grayBuffer);
+    if (!base || width < 3 || height < 3) {
+        CVPixelBufferUnlockBaseAddress(grayBuffer, kCVPixelBufferLock_ReadOnly);
+        return -1;
+    }
+
+    double sum = 0;
+    double sumSq = 0;
+    size_t count = 0;
+
+    for (size_t y = 1; y + 1 < height; y++) {
+        const uint8_t *row = base + y * bytesPerRow;
+        const uint8_t *rowUp = base + (y - 1) * bytesPerRow;
+        const uint8_t *rowDown = base + (y + 1) * bytesPerRow;
+        for (size_t x = 1; x + 1 < width; x++) {
+            int c = row[x];
+            int lap = (row[x - 1] + row[x + 1] + rowUp[x] + rowDown[x]) - 4 * c;
+            double v = (double)lap;
+            sum += v;
+            sumSq += v * v;
+            count += 1;
+        }
+    }
+
+    CVPixelBufferUnlockBaseAddress(grayBuffer, kCVPixelBufferLock_ReadOnly);
+
+    if (count == 0) return -1;
+    double mean = sum / (double)count;
+    double var = (sumSq / (double)count) - (mean * mean);
+    return var;
 }
 
 - (void)startMotionUpdates {

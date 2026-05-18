@@ -5,6 +5,7 @@
 #import "CDPendingTabViewController.h"
 #import "CDStereoCameraViewController.h"
 #import "CD3DGSCaptureViewController.h"
+#import "CDVideoConfirmViewController.h"
 
 @implementation CDMainTabBarController
 
@@ -30,10 +31,7 @@
                                       image:@"house.fill"
                                 buttonTitle:@"进入流程演示"
                          destinationBuilder:^UIViewController *{
-                             Class hostClass = NSClassFromString(@"CDMeshCaptureHostViewController");
-                             UIViewController *hostViewController = hostClass ? [[hostClass alloc] init] : nil;
-                             hostViewController.title = @"房间采集Demo";
-                             return hostViewController ?: [[CDPendingTabViewController alloc] init];
+                             return [[CDVideoConfirmViewController alloc] init];
                          }],
         [self navigationControllerWithTitle:@"待定"
                                       image:@"ellipsis.circle"
