@@ -6,9 +6,8 @@
 @interface CDRoomItem : NSObject
 @property (nonatomic, copy) NSString *roomId;
 @property (nonatomic, copy) NSString *roomName;
-@property (nonatomic, copy) NSString *totalSteps;
-@property (nonatomic, copy) NSString *completedSteps;
-@property (nonatomic, assign) NSInteger auditStatus; // 0:待拍摄 1:审核中 2:通过 3:未通过
+@property (nonatomic, assign) BOOL captureComplete; // 是否完成采集（完成后才会进入审核队列）
+@property (nonatomic, assign) NSInteger auditStatus; // 0:未进入审核 1:审核中 2:通过 3:未通过
 @property (nonatomic, copy) NSString *auditReason;
 @end
 
@@ -21,6 +20,7 @@
 @property (nonatomic, assign) CGFloat progress; // 0.0 ~ 1.0
 @property (nonatomic, strong) UIColor *trackColor;
 @property (nonatomic, strong) UIColor *progressColor;
+@property (nonatomic, copy) NSString *centerText; // e.g. 3/5
 @end
 
 @implementation CDProgressDonutView
@@ -56,7 +56,7 @@
         [progressPath stroke];
     }
 
-    NSString *percentText = [NSString stringWithFormat:@"%.0f%%", self.progress * 100];
+    NSString *percentText = self.centerText ?: [NSString stringWithFormat:@"%.0f%%", self.progress * 100];
     NSDictionary *attrs = @{
         NSFontAttributeName: [UIFont boldSystemFontOfSize:14],
         NSForegroundColorAttributeName: [UIColor blackColor]
@@ -73,6 +73,110 @@
 
 @end
 
+#pragma mark - Stacked Bar View
+
+@interface CDInsetLabel : UILabel
+@property (nonatomic, assign) UIEdgeInsets contentInsets;
+@end
+
+@implementation CDInsetLabel
+
+- (instancetype)initWithFrame:(CGRect)frame {
+    self = [super initWithFrame:frame];
+    if (self) {
+        _contentInsets = UIEdgeInsetsZero;
+    }
+    return self;
+}
+
+- (void)drawTextInRect:(CGRect)rect {
+    [super drawTextInRect:UIEdgeInsetsInsetRect(rect, self.contentInsets)];
+}
+
+- (CGSize)intrinsicContentSize {
+    CGSize size = [super intrinsicContentSize];
+    size.width += self.contentInsets.left + self.contentInsets.right;
+    size.height += self.contentInsets.top + self.contentInsets.bottom;
+    return size;
+}
+
+@end
+
+@interface CDStackedBarView : UIView
+@property (nonatomic, copy) NSArray<NSNumber *> *values;
+@property (nonatomic, copy) NSArray<UIColor *> *colors;
+@property (nonatomic, assign) CGFloat cornerRadius;
+@end
+
+@implementation CDStackedBarView {
+    NSMutableArray<CALayer *> *_segmentLayers;
+}
+
+- (instancetype)initWithFrame:(CGRect)frame {
+    self = [super initWithFrame:frame];
+    if (self) {
+        _segmentLayers = [NSMutableArray array];
+        _cornerRadius = 4;
+        self.backgroundColor = [UIColor clearColor];
+        self.clipsToBounds = YES;
+    }
+    return self;
+}
+
+- (void)setValues:(NSArray<NSNumber *> *)values {
+    _values = [values copy];
+    [self setNeedsLayout];
+}
+
+- (void)setColors:(NSArray<UIColor *> *)colors {
+    _colors = [colors copy];
+    [self setNeedsLayout];
+}
+
+- (void)layoutSubviews {
+    [super layoutSubviews];
+
+    for (CALayer *layer in _segmentLayers) {
+        [layer removeFromSuperlayer];
+    }
+    [_segmentLayers removeAllObjects];
+
+    CGFloat total = 0;
+    for (NSNumber *n in self.values) {
+        total += n.doubleValue;
+    }
+
+    self.layer.cornerRadius = self.cornerRadius;
+
+    if (total <= 0.0001 || self.values.count == 0) {
+        return;
+    }
+
+    CGFloat x = 0;
+    CGFloat h = self.bounds.size.height;
+    CGFloat w = self.bounds.size.width;
+
+    for (NSInteger i = 0; i < self.values.count; i++) {
+        CGFloat v = self.values[i].doubleValue;
+        if (v <= 0) continue;
+
+        CGFloat segW = (v / total) * w;
+        if (x + segW > w) segW = w - x;
+        if (segW <= 0) continue;
+
+        CALayer *seg = [CALayer layer];
+        seg.backgroundColor = (i < self.colors.count ? self.colors[i].CGColor : [UIColor lightGrayColor].CGColor);
+        seg.frame = CGRectMake(x, 0, segW, h);
+        [self.layer addSublayer:seg];
+        [_segmentLayers addObject:seg];
+
+        x += segW;
+        if (x >= w) break;
+    }
+}
+
+@end
+
 #pragma mark - Room Card Cell
 
 @interface CDRoomCardCell : UITableViewCell
@@ -80,12 +184,8 @@
 @property (nonatomic, strong) UIView *thumbView;
 @property (nonatomic, strong) UILabel *stepBadge;
 @property (nonatomic, strong) UILabel *titleLabel;
-@property (nonatomic, strong) UIView *statusTag;
-@property (nonatomic, strong) UILabel *statusLabel;
 @property (nonatomic, strong) UILabel *metaLabel;
-@property (nonatomic, strong) UIView *auditBadge;
-@property (nonatomic, strong) UILabel *auditIconLabel;
-@property (nonatomic, strong) UILabel *auditStatusLabel;
+@property (nonatomic, strong) CDInsetLabel *statusPill;
 @property (nonatomic, strong) UILabel *auditReasonLabel;
 @property (nonatomic, strong) UIImageView *chevronIcon;
 @end
@@ -160,46 +260,20 @@
     [self.titleLabel setContentCompressionResistancePriority:UILayoutPriorityDefaultLow forAxis:UILayoutConstraintAxisHorizontal];
     [self.cardView addSubview:self.titleLabel];
 
-    self.statusTag = [[UIView alloc] init];
-    self.statusTag.translatesAutoresizingMaskIntoConstraints = NO;
-    self.statusTag.layer.cornerRadius = 2;
-    self.statusTag.hidden = YES;
-    [self.cardView addSubview:self.statusTag];
-
-    self.statusLabel = [[UILabel alloc] init];
-    self.statusLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    self.statusLabel.font = [UIFont systemFontOfSize:11 weight:UIFontWeightSemibold];
-    self.statusLabel.textAlignment = NSTextAlignmentCenter;
-    [self.statusTag addSubview:self.statusLabel];
-    [NSLayoutConstraint activateConstraints:@[
-        [self.statusLabel.leadingAnchor constraintEqualToAnchor:self.statusTag.leadingAnchor constant:6],
-        [self.statusLabel.trailingAnchor constraintEqualToAnchor:self.statusTag.trailingAnchor constant:-6],
-        [self.statusLabel.topAnchor constraintEqualToAnchor:self.statusTag.topAnchor constant:0],
-        [self.statusLabel.bottomAnchor constraintEqualToAnchor:self.statusTag.bottomAnchor constant:0],
-        [self.statusTag.heightAnchor constraintEqualToConstant:18]
-    ]];
-
     self.metaLabel = [[UILabel alloc] init];
     self.metaLabel.translatesAutoresizingMaskIntoConstraints = NO;
     self.metaLabel.font = [UIFont systemFontOfSize:12];
     self.metaLabel.textColor = [UIColor colorWithRed:102/255.0 green:102/255.0 blue:102/255.0 alpha:1.0];
     [self.cardView addSubview:self.metaLabel];
 
-    // 审核区域
-    self.auditBadge = [[UIView alloc] init];
-    self.auditBadge.translatesAutoresizingMaskIntoConstraints = NO;
-    self.auditBadge.layer.cornerRadius = 10;
-    [self.cardView addSubview:self.auditBadge];
-
-    self.auditIconLabel = [[UILabel alloc] init];
-    self.auditIconLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    self.auditIconLabel.font = [UIFont systemFontOfSize:10 weight:UIFontWeightBold];
-    [self.auditBadge addSubview:self.auditIconLabel];
-
-    self.auditStatusLabel = [[UILabel alloc] init];
-    self.auditStatusLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    self.auditStatusLabel.font = [UIFont systemFontOfSize:11 weight:UIFontWeightBold];
-    [self.auditBadge addSubview:self.auditStatusLabel];
+    self.statusPill = [[CDInsetLabel alloc] initWithFrame:CGRectZero];
+    self.statusPill.translatesAutoresizingMaskIntoConstraints = NO;
+    self.statusPill.font = [UIFont systemFontOfSize:11 weight:UIFontWeightSemibold];
+    self.statusPill.contentInsets = UIEdgeInsetsMake(4, 10, 4, 10);
+    self.statusPill.layer.cornerRadius = 10;
+    self.statusPill.clipsToBounds = YES;
+    self.statusPill.hidden = YES;
+    [self.cardView addSubview:self.statusPill];
 
     self.auditReasonLabel = [[UILabel alloc] init];
     self.auditReasonLabel.translatesAutoresizingMaskIntoConstraints = NO;
@@ -207,17 +281,6 @@
     self.auditReasonLabel.textColor = [UIColor colorWithRed:232/255.0 green:34/255.0 blue:34/255.0 alpha:1.0];
     self.auditReasonLabel.hidden = YES;
     [self.cardView addSubview:self.auditReasonLabel];
-
-    [NSLayoutConstraint activateConstraints:@[
-        [self.auditIconLabel.leadingAnchor constraintEqualToAnchor:self.auditBadge.leadingAnchor constant:8],
-        [self.auditIconLabel.centerYAnchor constraintEqualToAnchor:self.auditBadge.centerYAnchor],
-        [self.auditIconLabel.widthAnchor constraintEqualToConstant:14],
-        [self.auditIconLabel.heightAnchor constraintEqualToConstant:14],
-
-        [self.auditStatusLabel.leadingAnchor constraintEqualToAnchor:self.auditIconLabel.trailingAnchor constant:2],
-        [self.auditStatusLabel.trailingAnchor constraintEqualToAnchor:self.auditBadge.trailingAnchor constant:-8],
-        [self.auditStatusLabel.centerYAnchor constraintEqualToAnchor:self.auditBadge.centerYAnchor]
-    ]];
 
     // 箭头
     self.chevronIcon = [[UIImageView alloc] init];
@@ -234,89 +297,70 @@
 
         [self.titleLabel.leadingAnchor constraintEqualToAnchor:self.thumbView.trailingAnchor constant:10],
         [self.titleLabel.topAnchor constraintEqualToAnchor:self.cardView.topAnchor constant:12],
-        [self.titleLabel.trailingAnchor constraintLessThanOrEqualToAnchor:self.statusTag.leadingAnchor constant:-6],
-
-        [self.statusTag.trailingAnchor constraintLessThanOrEqualToAnchor:self.chevronIcon.leadingAnchor constant:-8],
-        [self.statusTag.centerYAnchor constraintEqualToAnchor:self.titleLabel.centerYAnchor],
+        [self.titleLabel.trailingAnchor constraintLessThanOrEqualToAnchor:self.chevronIcon.leadingAnchor constant:-8],
 
         [self.metaLabel.leadingAnchor constraintEqualToAnchor:self.titleLabel.leadingAnchor],
         [self.metaLabel.topAnchor constraintEqualToAnchor:self.titleLabel.bottomAnchor constant:4],
         [self.metaLabel.trailingAnchor constraintEqualToAnchor:self.chevronIcon.leadingAnchor constant:-8],
 
-        [self.auditBadge.leadingAnchor constraintEqualToAnchor:self.titleLabel.leadingAnchor],
-        [self.auditBadge.topAnchor constraintEqualToAnchor:self.metaLabel.bottomAnchor constant:8],
-        [self.auditBadge.heightAnchor constraintEqualToConstant:20],
+        [self.statusPill.centerYAnchor constraintEqualToAnchor:self.titleLabel.centerYAnchor],
+        [self.statusPill.trailingAnchor constraintLessThanOrEqualToAnchor:self.chevronIcon.leadingAnchor constant:-8],
+        [self.titleLabel.trailingAnchor constraintLessThanOrEqualToAnchor:self.statusPill.leadingAnchor constant:-6],
 
-        [self.auditReasonLabel.leadingAnchor constraintEqualToAnchor:self.auditBadge.trailingAnchor constant:6],
-        [self.auditReasonLabel.centerYAnchor constraintEqualToAnchor:self.auditBadge.centerYAnchor],
-        [self.auditReasonLabel.trailingAnchor constraintEqualToAnchor:self.chevronIcon.leadingAnchor constant:-8]
+        [self.auditReasonLabel.leadingAnchor constraintEqualToAnchor:self.metaLabel.leadingAnchor],
+        [self.auditReasonLabel.topAnchor constraintEqualToAnchor:self.metaLabel.bottomAnchor constant:6],
+        [self.auditReasonLabel.trailingAnchor constraintEqualToAnchor:self.chevronIcon.leadingAnchor constant:-8],
+        [self.auditReasonLabel.bottomAnchor constraintLessThanOrEqualToAnchor:self.cardView.bottomAnchor constant:-12]
     ]];
 }
 
 - (void)configWithRoom:(CDRoomItem *)room {
     self.titleLabel.text = room.roomName;
 
-    NSString *stepText = [NSString stringWithFormat:@"%@/%@", room.completedSteps, room.totalSteps];
-    self.stepBadge.text = [NSString stringWithFormat:@" %@ ", stepText];
+    self.stepBadge.hidden = YES;
 
-    self.metaLabel.text = [NSString stringWithFormat:@"%@ 个步骤，已拍摄 %@ 个", room.totalSteps, room.completedSteps];
-
-    // 状态标签
-    if (room.auditStatus == 0) {
-        self.statusTag.hidden = NO;
-        self.statusTag.backgroundColor = [UIColor colorWithRed:245/255.0 green:245/255.0 blue:245/255.0 alpha:1.0];
-        self.statusLabel.text = @"待处理";
-        self.statusLabel.textColor = [UIColor colorWithRed:153/255.0 green:153/255.0 blue:153/255.0 alpha:1.0];
-    } else if (room.auditStatus == 1) {
-        self.statusTag.hidden = NO;
-        self.statusTag.backgroundColor = [UIColor colorWithRed:224/255.0 green:237/255.0 blue:255/255.0 alpha:1.0];
-        self.statusLabel.text = @"进行中";
-        self.statusLabel.textColor = [UIColor colorWithRed:26/255.0 green:102/255.0 blue:255/255.0 alpha:1.0];
+    if (!room.captureComplete) {
+        self.metaLabel.text = @"未完成采集，请先去采集";
     } else {
-        self.statusTag.hidden = YES;
+        self.metaLabel.text = @"已完成采集";
     }
 
-    // 审核标签
     self.auditReasonLabel.text = @"";
     self.auditReasonLabel.hidden = YES;
-    self.auditBadge.layer.borderWidth = 0;
-    self.auditBadge.layer.borderColor = nil;
+
+    self.statusPill.hidden = NO;
+    if (!room.captureComplete) {
+        self.statusPill.text = @"未采集";
+        self.statusPill.backgroundColor = [UIColor colorWithRed:245/255.0 green:245/255.0 blue:245/255.0 alpha:1.0];
+        self.statusPill.textColor = [UIColor colorWithRed:102/255.0 green:102/255.0 blue:102/255.0 alpha:1.0];
+        return;
+    }
 
     switch (room.auditStatus) {
-        case 0: { // 待拍摄
-            self.auditBadge.backgroundColor = [UIColor colorWithRed:245/255.0 green:245/255.0 blue:245/255.0 alpha:1.0];
-            self.auditBadge.layer.borderWidth = 1;
-            self.auditBadge.layer.borderColor = [UIColor colorWithRed:238/255.0 green:238/255.0 blue:238/255.0 alpha:1.0].CGColor;
-            self.auditIconLabel.text = @"⏱";
-            self.auditIconLabel.textColor = [UIColor colorWithRed:153/255.0 green:153/255.0 blue:153/255.0 alpha:1.0];
-            self.auditStatusLabel.text = @"待拍摄";
-            self.auditStatusLabel.textColor = [UIColor colorWithRed:153/255.0 green:153/255.0 blue:153/255.0 alpha:1.0];
-            break;
-        }
         case 1: { // 审核中
-            self.auditBadge.backgroundColor = [UIColor colorWithRed:232/255.0 green:240/255.0 blue:255/255.0 alpha:1.0];
-            self.auditIconLabel.text = @"⏳";
-            self.auditIconLabel.textColor = [UIColor colorWithRed:26/255.0 green:102/255.0 blue:255/255.0 alpha:1.0];
-            self.auditStatusLabel.text = @"审核中";
-            self.auditStatusLabel.textColor = [UIColor colorWithRed:26/255.0 green:102/255.0 blue:255/255.0 alpha:1.0];
+            self.statusPill.text = @"审核中";
+            self.statusPill.backgroundColor = [UIColor colorWithRed:232/255.0 green:240/255.0 blue:255/255.0 alpha:1.0];
+            self.statusPill.textColor = [UIColor colorWithRed:26/255.0 green:102/255.0 blue:255/255.0 alpha:1.0];
             break;
         }
-        case 2: { // 通过
-            self.auditBadge.backgroundColor = [UIColor colorWithRed:235/255.0 green:255/255.0 blue:247/255.0 alpha:1.0];
-            self.auditIconLabel.text = @"✓";
-            self.auditIconLabel.textColor = [UIColor colorWithRed:0/255.0 green:166/255.0 blue:102/255.0 alpha:1.0];
-            self.auditStatusLabel.text = @"已通过";
-            self.auditStatusLabel.textColor = [UIColor colorWithRed:0/255.0 green:166/255.0 blue:102/255.0 alpha:1.0];
+        case 2: { // 已通过
+            self.statusPill.text = @"已通过";
+            self.statusPill.backgroundColor = [UIColor colorWithRed:235/255.0 green:255/255.0 blue:247/255.0 alpha:1.0];
+            self.statusPill.textColor = [UIColor colorWithRed:0/255.0 green:166/255.0 blue:102/255.0 alpha:1.0];
             break;
         }
         case 3: { // 未通过
-            self.auditBadge.backgroundColor = [UIColor colorWithRed:255/255.0 green:240/255.0 blue:240/255.0 alpha:1.0];
-            self.auditIconLabel.text = @"✗";
-            self.auditIconLabel.textColor = [UIColor colorWithRed:232/255.0 green:34/255.0 blue:34/255.0 alpha:1.0];
-            self.auditStatusLabel.text = @"未通过";
-            self.auditStatusLabel.textColor = [UIColor colorWithRed:232/255.0 green:34/255.0 blue:34/255.0 alpha:1.0];
+            self.statusPill.text = @"未通过";
+            self.statusPill.backgroundColor = [UIColor colorWithRed:255/255.0 green:240/255.0 blue:240/255.0 alpha:1.0];
+            self.statusPill.textColor = [UIColor colorWithRed:232/255.0 green:34/255.0 blue:34/255.0 alpha:1.0];
             self.auditReasonLabel.text = room.auditReason;
             self.auditReasonLabel.hidden = NO;
+            break;
+        }
+        default: {
+            self.statusPill.text = @"待审核";
+            self.statusPill.backgroundColor = [UIColor colorWithRed:245/255.0 green:245/255.0 blue:245/255.0 alpha:1.0];
+            self.statusPill.textColor = [UIColor colorWithRed:102/255.0 green:102/255.0 blue:102/255.0 alpha:1.0];
             break;
         }
     }
@@ -342,12 +386,18 @@
 @property (nonatomic, strong) UILabel *roomTypeLabel;
 @property (nonatomic, strong) CDProgressDonutView *progressDonut;
 @property (nonatomic, strong) UIView *progressCard;
+@property (nonatomic, strong) UILabel *progressTitleLabel;
 
-// 审核 Banner
-@property (nonatomic, strong) UIView *auditBanner;
-@property (nonatomic, strong) UILabel *auditBannerIcon;
-@property (nonatomic, strong) UILabel *auditTitleLabel;
-@property (nonatomic, strong) UILabel *auditDescLabel;
+// 审核总览
+@property (nonatomic, strong) UIView *auditCard;
+@property (nonatomic, strong) UILabel *auditStateLabel;
+@property (nonatomic, strong) UILabel *auditSubtitleLabel;
+@property (nonatomic, strong) CDStackedBarView *auditStackedBar;
+@property (nonatomic, strong) UIStackView *auditPillsStack;
+@property (nonatomic, strong) CDInsetLabel *pillIncompleteLabel;
+@property (nonatomic, strong) CDInsetLabel *pillReviewingLabel;
+@property (nonatomic, strong) CDInsetLabel *pillFailLabel;
+@property (nonatomic, strong) CDInsetLabel *pillPassLabel;
 
 // 房间列表
 @property (nonatomic, strong) UILabel *sectionTitle;
@@ -359,13 +409,8 @@
 // 底部提交
 @property (nonatomic, strong) UIView *bottomBar;
 @property (nonatomic, strong) UIButton *submitBtn;
+@property (nonatomic, strong) UILabel *submitHintLabel;
 @property (nonatomic, strong) NSLayoutConstraint *bottomBarHeightConstraint;
-
-// 数据
-@property (nonatomic, assign) NSInteger totalRooms;
-@property (nonatomic, assign) NSInteger passedRooms;
-@property (nonatomic, assign) CGFloat overallProgress;
-@property (nonatomic, copy) NSString *globalAuditReason;
 
 @end
 
@@ -379,9 +424,7 @@
     [self setupNavigationBar];
     [self setupMockData];
     [self setupViews];
-    [self updateAuditBanner];
-    [self updateRoomTableHeight];
-    [self.roomTableView reloadData];
+    [self refreshOverviewUI];
 }
 
 - (void)setupNavigationBar {
@@ -423,18 +466,12 @@
 
 - (void)setupMockData {
     // 模拟数据
-    self.totalRooms = 5;
-    self.passedRooms = 3;
-    self.overallProgress = 0.6; // 60%
-    self.globalAuditReason = @"主卧光线不足 · 次卧画面抖动";
-
     self.roomList = [NSMutableArray array];
 
     CDRoomItem *room1 = [[CDRoomItem alloc] init];
     room1.roomId = @"1";
     room1.roomName = @"主卧";
-    room1.totalSteps = @"5";
-    room1.completedSteps = @"5";
+    room1.captureComplete = YES;
     room1.auditStatus = 3; // 未通过
     room1.auditReason = @"光线严重不足";
     [self.roomList addObject:room1];
@@ -442,36 +479,32 @@
     CDRoomItem *room2 = [[CDRoomItem alloc] init];
     room2.roomId = @"2";
     room2.roomName = @"次卧";
-    room2.totalSteps = @"5";
-    room2.completedSteps = @"5";
-    room2.auditStatus = 3; // 未通过
-    room2.auditReason = @"画面剧烈抖动";
+    room2.captureComplete = YES;
+    room2.auditStatus = 1; // 审核中
+    room2.auditReason = @"";
     [self.roomList addObject:room2];
 
     CDRoomItem *room3 = [[CDRoomItem alloc] init];
     room3.roomId = @"3";
     room3.roomName = @"客厅";
-    room3.totalSteps = @"6";
-    room3.completedSteps = @"3";
-    room3.auditStatus = 1; // 审核中
+    room3.captureComplete = YES;
+    room3.auditStatus = 2; // 已通过
     room3.auditReason = @"";
     [self.roomList addObject:room3];
 
     CDRoomItem *room4 = [[CDRoomItem alloc] init];
     room4.roomId = @"4";
     room4.roomName = @"厨房";
-    room4.totalSteps = @"6";
-    room4.completedSteps = @"0";
-    room4.auditStatus = 0; // 待拍摄
+    room4.captureComplete = NO;
+    room4.auditStatus = 0; // 未进入审核
     room4.auditReason = @"";
     [self.roomList addObject:room4];
 
     CDRoomItem *room5 = [[CDRoomItem alloc] init];
     room5.roomId = @"5";
     room5.roomName = @"卫生间";
-    room5.totalSteps = @"6";
-    room5.completedSteps = @"0";
-    room5.auditStatus = 0; // 待拍摄
+    room5.captureComplete = NO;
+    room5.auditStatus = 0; // 未进入审核
     room5.auditReason = @"";
     [self.roomList addObject:room5];
 }
@@ -520,7 +553,7 @@
     }
 
     [self setupFloorplanView];
-    [self setupAuditBanner];
+    [self setupAuditCard];
     [self setupSectionTitle];
     [self setupRoomTableView];
 }
@@ -535,7 +568,7 @@
         [self.floorplanContainer.topAnchor constraintEqualToAnchor:self.contentView.topAnchor],
         [self.floorplanContainer.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor],
         [self.floorplanContainer.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor],
-        [self.floorplanContainer.heightAnchor constraintEqualToConstant:242] // 220 + 22(进度卡片溢出)
+        [self.floorplanContainer.heightAnchor constraintEqualToConstant:272] // 220 + 22(进度卡片溢出) + 文案
     ]];
 
     // 户型图背景
@@ -662,13 +695,23 @@
 
     self.progressDonut = [[CDProgressDonutView alloc] initWithFrame:CGRectZero];
     self.progressDonut.translatesAutoresizingMaskIntoConstraints = NO;
-    self.progressDonut.progress = self.overallProgress;
     [self.progressCard addSubview:self.progressDonut];
     [NSLayoutConstraint activateConstraints:@[
         [self.progressDonut.centerXAnchor constraintEqualToAnchor:self.progressCard.centerXAnchor],
         [self.progressDonut.centerYAnchor constraintEqualToAnchor:self.progressCard.centerYAnchor],
         [self.progressDonut.widthAnchor constraintEqualToConstant:48],
         [self.progressDonut.heightAnchor constraintEqualToConstant:48]
+    ]];
+
+    self.progressTitleLabel = [[UILabel alloc] initWithFrame:CGRectZero];
+    self.progressTitleLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    self.progressTitleLabel.text = @"采集进度";
+    self.progressTitleLabel.font = [UIFont systemFontOfSize:12 weight:UIFontWeightSemibold];
+    self.progressTitleLabel.textColor = [UIColor colorWithRed:102/255.0 green:102/255.0 blue:102/255.0 alpha:1.0];
+    [self.floorplanContainer addSubview:self.progressTitleLabel];
+    [NSLayoutConstraint activateConstraints:@[
+        [self.progressTitleLabel.centerXAnchor constraintEqualToAnchor:self.progressCard.centerXAnchor],
+        [self.progressTitleLabel.topAnchor constraintEqualToAnchor:self.progressCard.bottomAnchor constant:6]
     ]];
 
     // 简单模拟户型图
@@ -703,63 +746,113 @@
     ]];
 }
 
-- (void)setupAuditBanner {
-    self.auditBanner = [[UIView alloc] initWithFrame:CGRectZero];
-    self.auditBanner.translatesAutoresizingMaskIntoConstraints = NO;
-    self.auditBanner.backgroundColor = [UIColor colorWithRed:255/255.0 green:240/255.0 blue:240/255.0 alpha:1.0];
-    self.auditBanner.layer.cornerRadius = 8;
-    self.auditBanner.layer.borderWidth = 1;
-    self.auditBanner.layer.borderColor = [UIColor colorWithRed:250/255.0 green:162/255.0 blue:65/255.0 alpha:0.3].CGColor;
-    [self.contentView addSubview:self.auditBanner];
+- (CDInsetLabel *)makePillLabelWithBackgroundColor:(UIColor *)bgColor textColor:(UIColor *)textColor {
+    CDInsetLabel *label = [[CDInsetLabel alloc] initWithFrame:CGRectZero];
+    label.translatesAutoresizingMaskIntoConstraints = NO;
+    label.font = [UIFont systemFontOfSize:11 weight:UIFontWeightSemibold];
+    label.textColor = textColor;
+    label.backgroundColor = bgColor;
+    label.contentInsets = UIEdgeInsetsMake(4, 10, 4, 10);
+    label.layer.cornerRadius = 11;
+    label.clipsToBounds = YES;
+    label.textAlignment = NSTextAlignmentCenter;
+    label.text = @"-";
+    [label setContentHuggingPriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
+    [label setContentCompressionResistancePriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
     [NSLayoutConstraint activateConstraints:@[
-        [self.auditBanner.topAnchor constraintEqualToAnchor:self.floorplanContainer.bottomAnchor constant:16],
-        [self.auditBanner.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:16],
-        [self.auditBanner.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor constant:-16],
-        [self.auditBanner.heightAnchor constraintEqualToConstant:48]
+        [label.heightAnchor constraintEqualToConstant:22]
+    ]];
+    return label;
+}
+
+- (void)setupAuditCard {
+    self.auditCard = [[UIView alloc] initWithFrame:CGRectZero];
+    self.auditCard.translatesAutoresizingMaskIntoConstraints = NO;
+    self.auditCard.backgroundColor = [UIColor whiteColor];
+    self.auditCard.layer.cornerRadius = 8;
+    self.auditCard.layer.shadowColor = [UIColor colorWithWhite:0 alpha:1].CGColor;
+    self.auditCard.layer.shadowOpacity = 0.08;
+    self.auditCard.layer.shadowOffset = CGSizeMake(0, 1);
+    self.auditCard.layer.shadowRadius = 4;
+    [self.contentView addSubview:self.auditCard];
+
+    [NSLayoutConstraint activateConstraints:@[
+        [self.auditCard.topAnchor constraintEqualToAnchor:self.floorplanContainer.bottomAnchor constant:16],
+        [self.auditCard.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:16],
+        [self.auditCard.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor constant:-16],
+        [self.auditCard.heightAnchor constraintEqualToConstant:124]
     ]];
 
     UIView *innerView = [[UIView alloc] initWithFrame:CGRectZero];
     innerView.translatesAutoresizingMaskIntoConstraints = NO;
-    [self.auditBanner addSubview:innerView];
+    [self.auditCard addSubview:innerView];
     [NSLayoutConstraint activateConstraints:@[
-        [innerView.leadingAnchor constraintEqualToAnchor:self.auditBanner.leadingAnchor constant:12],
-        [innerView.trailingAnchor constraintEqualToAnchor:self.auditBanner.trailingAnchor constant:-12],
-        [innerView.topAnchor constraintEqualToAnchor:self.auditBanner.topAnchor constant:10],
-        [innerView.bottomAnchor constraintEqualToAnchor:self.auditBanner.bottomAnchor constant:-10]
+        [innerView.leadingAnchor constraintEqualToAnchor:self.auditCard.leadingAnchor constant:12],
+        [innerView.trailingAnchor constraintEqualToAnchor:self.auditCard.trailingAnchor constant:-12],
+        [innerView.topAnchor constraintEqualToAnchor:self.auditCard.topAnchor constant:14],
+        [innerView.bottomAnchor constraintEqualToAnchor:self.auditCard.bottomAnchor constant:-14]
     ]];
 
-    self.auditBannerIcon = [[UILabel alloc] initWithFrame:CGRectZero];
-    self.auditBannerIcon.translatesAutoresizingMaskIntoConstraints = NO;
-    self.auditBannerIcon.text = @"⚠";
-    self.auditBannerIcon.font = [UIFont systemFontOfSize:14];
-    self.auditBannerIcon.textColor = [UIColor colorWithRed:250/255.0 green:162/255.0 blue:65/255.0 alpha:1.0];
-    [innerView addSubview:self.auditBannerIcon];
+    self.auditStateLabel = [[UILabel alloc] initWithFrame:CGRectZero];
+    self.auditStateLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    self.auditStateLabel.font = [UIFont boldSystemFontOfSize:14];
+    self.auditStateLabel.textColor = [UIColor colorWithRed:34/255.0 green:34/255.0 blue:34/255.0 alpha:1.0];
+    self.auditStateLabel.text = @"审核状态";
+    [innerView addSubview:self.auditStateLabel];
 
-    self.auditTitleLabel = [[UILabel alloc] initWithFrame:CGRectZero];
-    self.auditTitleLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    self.auditTitleLabel.font = [UIFont boldSystemFontOfSize:13];
-    self.auditTitleLabel.textColor = [UIColor colorWithRed:204/255.0 green:122/255.0 blue:0/255.0 alpha:1.0];
-    [innerView addSubview:self.auditTitleLabel];
+    self.auditSubtitleLabel = [[UILabel alloc] initWithFrame:CGRectZero];
+    self.auditSubtitleLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    self.auditSubtitleLabel.font = [UIFont systemFontOfSize:12];
+    self.auditSubtitleLabel.textColor = [UIColor colorWithRed:102/255.0 green:102/255.0 blue:102/255.0 alpha:1.0];
+    self.auditSubtitleLabel.numberOfLines = 1;
+    [innerView addSubview:self.auditSubtitleLabel];
 
-    self.auditDescLabel = [[UILabel alloc] initWithFrame:CGRectZero];
-    self.auditDescLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    self.auditDescLabel.font = [UIFont systemFontOfSize:12];
-    self.auditDescLabel.textColor = [UIColor colorWithRed:102/255.0 green:102/255.0 blue:102/255.0 alpha:1.0];
-    [innerView addSubview:self.auditDescLabel];
+    self.auditStackedBar = [[CDStackedBarView alloc] initWithFrame:CGRectZero];
+    self.auditStackedBar.translatesAutoresizingMaskIntoConstraints = NO;
+    self.auditStackedBar.cornerRadius = 4;
+    self.auditStackedBar.backgroundColor = [UIColor colorWithRed:238/255.0 green:238/255.0 blue:238/255.0 alpha:1.0];
+    [innerView addSubview:self.auditStackedBar];
+
+    self.pillIncompleteLabel = [self makePillLabelWithBackgroundColor:[UIColor colorWithRed:245/255.0 green:245/255.0 blue:245/255.0 alpha:1.0]
+                                                            textColor:[UIColor colorWithRed:102/255.0 green:102/255.0 blue:102/255.0 alpha:1.0]];
+    self.pillReviewingLabel = [self makePillLabelWithBackgroundColor:[UIColor colorWithRed:232/255.0 green:240/255.0 blue:255/255.0 alpha:1.0]
+                                                           textColor:[UIColor colorWithRed:26/255.0 green:102/255.0 blue:255/255.0 alpha:1.0]];
+    self.pillFailLabel = [self makePillLabelWithBackgroundColor:[UIColor colorWithRed:255/255.0 green:240/255.0 blue:240/255.0 alpha:1.0]
+                                                      textColor:[UIColor colorWithRed:232/255.0 green:34/255.0 blue:34/255.0 alpha:1.0]];
+    self.pillPassLabel = [self makePillLabelWithBackgroundColor:[UIColor colorWithRed:235/255.0 green:255/255.0 blue:247/255.0 alpha:1.0]
+                                                      textColor:[UIColor colorWithRed:0/255.0 green:166/255.0 blue:102/255.0 alpha:1.0]];
+
+    self.auditPillsStack = [[UIStackView alloc] initWithArrangedSubviews:@[
+        self.pillIncompleteLabel,
+        self.pillReviewingLabel,
+        self.pillFailLabel,
+        self.pillPassLabel
+    ]];
+    self.auditPillsStack.translatesAutoresizingMaskIntoConstraints = NO;
+    self.auditPillsStack.axis = UILayoutConstraintAxisHorizontal;
+    self.auditPillsStack.alignment = UIStackViewAlignmentCenter;
+    self.auditPillsStack.spacing = 8;
+    self.auditPillsStack.distribution = UIStackViewDistributionFill;
+    [innerView addSubview:self.auditPillsStack];
 
     [NSLayoutConstraint activateConstraints:@[
-        [self.auditBannerIcon.leadingAnchor constraintEqualToAnchor:innerView.leadingAnchor],
-        [self.auditBannerIcon.centerYAnchor constraintEqualToAnchor:innerView.centerYAnchor],
-        [self.auditBannerIcon.widthAnchor constraintEqualToConstant:20],
-        [self.auditBannerIcon.heightAnchor constraintEqualToConstant:20],
+        [self.auditStateLabel.leadingAnchor constraintEqualToAnchor:innerView.leadingAnchor],
+        [self.auditStateLabel.topAnchor constraintEqualToAnchor:innerView.topAnchor],
+        [self.auditStateLabel.trailingAnchor constraintEqualToAnchor:innerView.trailingAnchor],
 
-        [self.auditTitleLabel.leadingAnchor constraintEqualToAnchor:self.auditBannerIcon.trailingAnchor constant:10],
-        [self.auditTitleLabel.topAnchor constraintEqualToAnchor:innerView.topAnchor constant:0],
-        [self.auditTitleLabel.trailingAnchor constraintEqualToAnchor:innerView.trailingAnchor],
+        [self.auditSubtitleLabel.leadingAnchor constraintEqualToAnchor:innerView.leadingAnchor],
+        [self.auditSubtitleLabel.topAnchor constraintEqualToAnchor:self.auditStateLabel.bottomAnchor constant:4],
+        [self.auditSubtitleLabel.trailingAnchor constraintEqualToAnchor:innerView.trailingAnchor],
 
-        [self.auditDescLabel.leadingAnchor constraintEqualToAnchor:self.auditTitleLabel.leadingAnchor],
-        [self.auditDescLabel.bottomAnchor constraintEqualToAnchor:innerView.bottomAnchor constant:0],
-        [self.auditDescLabel.trailingAnchor constraintEqualToAnchor:innerView.trailingAnchor]
+        [self.auditStackedBar.leadingAnchor constraintEqualToAnchor:innerView.leadingAnchor],
+        [self.auditStackedBar.topAnchor constraintEqualToAnchor:self.auditSubtitleLabel.bottomAnchor constant:10],
+        [self.auditStackedBar.trailingAnchor constraintEqualToAnchor:innerView.trailingAnchor],
+        [self.auditStackedBar.heightAnchor constraintEqualToConstant:8],
+
+        [self.auditPillsStack.leadingAnchor constraintEqualToAnchor:innerView.leadingAnchor],
+        [self.auditPillsStack.topAnchor constraintEqualToAnchor:self.auditStackedBar.bottomAnchor constant:12],
+        [self.auditPillsStack.trailingAnchor constraintLessThanOrEqualToAnchor:innerView.trailingAnchor],
+        [self.auditPillsStack.bottomAnchor constraintEqualToAnchor:innerView.bottomAnchor]
     ]];
 }
 
@@ -769,7 +862,7 @@
     [self.contentView addSubview:sectionHeader];
 
     [NSLayoutConstraint activateConstraints:@[
-        [sectionHeader.topAnchor constraintEqualToAnchor:self.auditBanner.bottomAnchor constant:12],
+        [sectionHeader.topAnchor constraintEqualToAnchor:self.auditCard.bottomAnchor constant:12],
         [sectionHeader.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:16],
         [sectionHeader.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor constant:-16],
         [sectionHeader.heightAnchor constraintEqualToConstant:20]
@@ -835,7 +928,7 @@
         }
     }
 
-    NSLayoutYAxisAnchor *topAnchor = sectionHeader ? sectionHeader.bottomAnchor : self.auditBanner.bottomAnchor;
+    NSLayoutYAxisAnchor *topAnchor = sectionHeader ? sectionHeader.bottomAnchor : self.auditCard.bottomAnchor;
     self.roomTableHeightConstraint = [self.roomTableView.heightAnchor constraintEqualToConstant:0];
     [NSLayoutConstraint activateConstraints:@[
         [self.roomTableView.topAnchor constraintEqualToAnchor:topAnchor constant:4],
@@ -887,6 +980,20 @@
         [self.submitBtn.heightAnchor constraintEqualToConstant:48]
     ]];
 
+    self.submitHintLabel = [[UILabel alloc] initWithFrame:CGRectZero];
+    self.submitHintLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    self.submitHintLabel.font = [UIFont systemFontOfSize:12];
+    self.submitHintLabel.textColor = [UIColor colorWithRed:102/255.0 green:102/255.0 blue:102/255.0 alpha:1.0];
+    self.submitHintLabel.textAlignment = NSTextAlignmentCenter;
+    self.submitHintLabel.text = @"";
+    [self.bottomBar addSubview:self.submitHintLabel];
+    [NSLayoutConstraint activateConstraints:@[
+        [self.submitHintLabel.leadingAnchor constraintEqualToAnchor:self.bottomBar.leadingAnchor constant:16],
+        [self.submitHintLabel.trailingAnchor constraintEqualToAnchor:self.bottomBar.trailingAnchor constant:-16],
+        [self.submitHintLabel.topAnchor constraintEqualToAnchor:self.submitBtn.bottomAnchor constant:6],
+        [self.submitHintLabel.heightAnchor constraintEqualToConstant:16]
+    ]];
+
     [self updateBottomBarHeight];
 }
 
@@ -913,39 +1020,83 @@
     self.roomTableHeightConstraint.constant = self.roomList.count * 90.0;
 }
 
+- (void)refreshOverviewUI {
+    NSInteger total = self.roomList.count;
+    NSInteger captured = 0;
+    NSInteger reviewing = 0;
+    NSInteger fail = 0;
+    NSInteger pass = 0;
+
+    for (CDRoomItem *room in self.roomList) {
+        if (!room.captureComplete) continue;
+        captured += 1;
+        if (room.auditStatus == 1) reviewing += 1;
+        else if (room.auditStatus == 2) pass += 1;
+        else if (room.auditStatus == 3) fail += 1;
+    }
+
+    NSInteger incomplete = total - captured;
+    NSInteger audited = pass + fail;
+
+    CGFloat captureProgress = total > 0 ? (captured * 1.0 / total) : 0;
+    self.progressDonut.progress = captureProgress;
+    self.progressDonut.centerText = [NSString stringWithFormat:@"%ld/%ld", (long)captured, (long)total];
+
+    if (incomplete > 0) {
+        self.auditStateLabel.text = @"先完成采集";
+        self.auditSubtitleLabel.text = [NSString stringWithFormat:@"完成采集后才会进入审核（已进入审核：%ld/%ld）", (long)captured, (long)total];
+    } else if (reviewing > 0) {
+        self.auditStateLabel.text = @"审核进行中";
+        self.auditSubtitleLabel.text = [NSString stringWithFormat:@"已出结果 %ld/%ld · 审核中 %ld", (long)audited, (long)captured, (long)reviewing];
+    } else {
+        self.auditStateLabel.text = @"审核已完成";
+        if (fail == 0 && total > 0) {
+            self.auditSubtitleLabel.text = @"全部房间已通过审核";
+        } else if (fail > 0) {
+            self.auditSubtitleLabel.text = [NSString stringWithFormat:@"未通过 %ld/%ld", (long)fail, (long)captured];
+        } else {
+            self.auditSubtitleLabel.text = @"";
+        }
+    }
+
+    self.pillIncompleteLabel.text = [NSString stringWithFormat:@"未采集 %ld", (long)incomplete];
+    self.pillReviewingLabel.text = [NSString stringWithFormat:@"审核中 %ld", (long)reviewing];
+    self.pillFailLabel.text = [NSString stringWithFormat:@"未通过 %ld", (long)fail];
+    self.pillPassLabel.text = [NSString stringWithFormat:@"已通过 %ld", (long)pass];
+
+    self.auditStackedBar.values = @[@(reviewing), @(fail), @(pass)];
+    self.auditStackedBar.colors = @[
+        [UIColor colorWithRed:26/255.0 green:102/255.0 blue:255/255.0 alpha:1.0],
+        [UIColor colorWithRed:232/255.0 green:34/255.0 blue:34/255.0 alpha:1.0],
+        [UIColor colorWithRed:0/255.0 green:166/255.0 blue:102/255.0 alpha:1.0]
+    ];
+
+    BOOL canSubmit = (total > 0 && incomplete == 0 && reviewing == 0 && fail == 0 && pass == total);
+    self.submitBtn.enabled = canSubmit;
+    if (canSubmit) {
+        self.submitBtn.backgroundColor = [UIColor colorWithRed:26/255.0 green:102/255.0 blue:255/255.0 alpha:1.0];
+        self.submitHintLabel.text = @"全部房间已通过审核，可提交";
+    } else {
+        self.submitBtn.backgroundColor = [UIColor colorWithRed:238/255.0 green:238/255.0 blue:238/255.0 alpha:1.0];
+        if (incomplete > 0) {
+            self.submitHintLabel.text = [NSString stringWithFormat:@"不可提交：还有 %ld 个房间未完成采集", (long)incomplete];
+        } else if (reviewing > 0) {
+            self.submitHintLabel.text = [NSString stringWithFormat:@"不可提交：还有 %ld 个房间审核中", (long)reviewing];
+        } else if (fail > 0) {
+            self.submitHintLabel.text = [NSString stringWithFormat:@"不可提交：有 %ld 个房间未通过审核", (long)fail];
+        } else {
+            self.submitHintLabel.text = @"不可提交：审核未完成";
+        }
+    }
+
+    [self updateRoomTableHeight];
+    [self.roomTableView reloadData];
+}
+
 #pragma mark - StatusBar
 
 - (UIStatusBarStyle)preferredStatusBarStyle {
     return UIStatusBarStyleLightContent;
-}
-
-- (void)updateAuditBanner {
-    NSInteger failCount = 0;
-    for (CDRoomItem *room in self.roomList) {
-        if (room.auditStatus == 3) failCount++;
-    }
-
-    if (failCount == 0) {
-        self.auditBanner.backgroundColor = [UIColor colorWithRed:235/255.0 green:255/255.0 blue:247/255.0 alpha:1.0];
-        self.auditBanner.layer.borderColor = [UIColor colorWithRed:0/255.0 green:166/255.0 blue:102/255.0 alpha:0.2].CGColor;
-        self.auditBannerIcon.text = @"✓";
-        self.auditBannerIcon.textColor = [UIColor colorWithRed:0/255.0 green:166/255.0 blue:102/255.0 alpha:1.0];
-        self.auditTitleLabel.text = [NSString stringWithFormat:@"%ld/%ld 房间检测通过", (long)self.roomList.count, (long)self.roomList.count];
-        self.auditTitleLabel.textColor = [UIColor colorWithRed:0/255.0 green:122/255.0 blue:74/255.0 alpha:1.0];
-        self.auditDescLabel.text = @"所有房间审核通过，可以提交";
-        self.submitBtn.enabled = YES;
-        self.submitBtn.backgroundColor = [UIColor colorWithRed:26/255.0 green:102/255.0 blue:255/255.0 alpha:1.0];
-    } else {
-        self.auditBanner.backgroundColor = [UIColor colorWithRed:255/255.0 green:240/255.0 blue:240/255.0 alpha:1.0];
-        self.auditBanner.layer.borderColor = [UIColor colorWithRed:250/255.0 green:162/255.0 blue:65/255.0 alpha:0.3].CGColor;
-        self.auditBannerIcon.text = @"⚠";
-        self.auditBannerIcon.textColor = [UIColor colorWithRed:250/255.0 green:162/255.0 blue:65/255.0 alpha:1.0];
-        self.auditTitleLabel.text = [NSString stringWithFormat:@"%ld/%ld 房间检测未通过", (long)failCount, (long)self.roomList.count];
-        self.auditTitleLabel.textColor = [UIColor colorWithRed:204/255.0 green:122/255.0 blue:0/255.0 alpha:1.0];
-        self.auditDescLabel.text = self.globalAuditReason;
-        self.submitBtn.enabled = NO;
-        self.submitBtn.backgroundColor = [UIColor colorWithRed:238/255.0 green:238/255.0 blue:238/255.0 alpha:1.0];
-    }
 }
 
 #pragma mark - UITableViewDataSource
