@@ -13,9 +13,18 @@
 		2A6D9075753D94387AA12C5F /* CDMeshCaptureHostViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 779B8C9EDB69303B181931DD /* CDMeshCaptureHostViewController.swift */; };
 		2AE167C5CB8DC5669C5E6CB9 /* CDStereoCameraViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = 722E019B120619A3435F8446 /* CDStereoCameraViewController.m */; };
 		34F09F69EFF652ABDD44C000 /* MeshPreviewRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7514B37A6EE331223D7AA398 /* MeshPreviewRenderer.swift */; };
+		A12B34C56D789E01F2345678 /* PathPlot2D.swift in Sources */ = {isa = PBXBuildFile; fileRef = A12B34C56D789E01F2345680 /* PathPlot2D.swift */; };
+		A12B34C56D789E01F2345679 /* CDSShapeCaptureHostViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A12B34C56D789E01F2345681 /* CDSShapeCaptureHostViewController.swift */; };
+		A12B34C56D789E01F234567A /* CDSShapeShootViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = A12B34C56D789E01F2345683 /* CDSShapeShootViewController.m */; };
+		A12B34C56D789E01F234567B /* LiveTrajectoryPreviewStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A12B34C56D789E01F2345684 /* LiveTrajectoryPreviewStore.swift */; };
+		A12B34C56D789E01F2345695 /* CDReshootCaptureHostViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A12B34C56D789E01F2345691 /* CDReshootCaptureHostViewController.swift */; };
+		A12B34C56D789E01F2345696 /* CDReshootShootViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = A12B34C56D789E01F2345693 /* CDReshootShootViewController.m */; };
 		3D38B0DDB5BCBA64EC3BA2B1 /* CDCameraService.m in Sources */ = {isa = PBXBuildFile; fileRef = CCF8337DEE9500D59AF6EFEB /* CDCameraService.m */; };
 		4E521DE7D962F3945DEBE355 /* ARSCNViewContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC9B0B4C32E2B1A8D6AFAEF1 /* ARSCNViewContainer.swift */; };
 		527B150E25EE34903877876E /* CDMainTabBarController.m in Sources */ = {isa = PBXBuildFile; fileRef = E74344B24886DADD8580AEB6 /* CDMainTabBarController.m */; };
+		A7B4C8D9E0F1122334455667 /* CDCapturePlanViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = A7B4C8D9E0F1122334455669 /* CDCapturePlanViewController.m */; };
+		B8D2D8C7E0A1B2C3D4E5F601 /* CDWallOrbitShootViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = B8D2D8C7E0A1B2C3D4E5F603 /* CDWallOrbitShootViewController.m */; };
+		C1A2B3C4D5E6F708192A3B4D /* CDWallOrbitCaptureHostViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A2B3C4D5E6F708192A3B4E /* CDWallOrbitCaptureHostViewController.swift */; };
 		541BAB3129629D7897823A7C /* CDStereoCaptureDetailViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43E1321D62512CEFF6A1A3D4 /* CDStereoCaptureDetailViewController.swift */; };
 		5990FB3E90992F1FD16AFB02 /* Metal.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = F0D63696B414E98477699329 /* Metal.framework */; };
 		5EF2E13416CCDEA259BF7637 /* CDPendingTabViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = B94C55EC2953D159D3F80AEA /* CDPendingTabViewController.m */; };
@@ -27,6 +36,7 @@
 		7ADD782B5DC44BC5E1AF9D58 /* DepthCoverageAccumulator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0AAE88B97D5213031E509854 /* DepthCoverageAccumulator.swift */; };
 		7B213CC30738A51E8535D759 /* CaptureReviewModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8396906A6BE840C35DB97072 /* CaptureReviewModels.swift */; };
 		7CCF9461ADCF0C11E0ADE551 /* RenderMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 516166F25DC1DCDB3317767E /* RenderMode.swift */; };
+		7D4F2C9A8B6143E5F0A1B2C3 /* LiveMeshPreviewSceneStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B8E2A6C1F9347D5A0B2C3E4 /* LiveMeshPreviewSceneStore.swift */; };
 		8226CC93FC928695F7076133 /* PointCloudAccumulator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37F8F36807E29CE39A3CF2D9 /* PointCloudAccumulator.swift */; };
 		8494A71F0472D1883844ADBF /* VideoPoseRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4DA18D87E38BC24A965D6B8 /* VideoPoseRecorder.swift */; };
 		854EAB2947327BAD6A396D01 /* SceneKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 9888C204A6582D5AD79F52E2 /* SceneKit.framework */; };
@@ -80,6 +90,7 @@
 		423CA50CC27C68F3DB672107 /* CDCameraSettingsViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = CDCameraSettingsViewController.m; sourceTree = "<group>"; };
 		43E1321D62512CEFF6A1A3D4 /* CDStereoCaptureDetailViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CDStereoCaptureDetailViewController.swift; sourceTree = "<group>"; };
 		4BD7C5EB5BF95A993502A248 /* CoreMedia.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreMedia.framework; path = System/Library/Frameworks/CoreMedia.framework; sourceTree = SDKROOT; };
+		4B8E2A6C1F9347D5A0B2C3E4 /* LiveMeshPreviewSceneStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveMeshPreviewSceneStore.swift; sourceTree = "<group>"; };
 		516166F25DC1DCDB3317767E /* RenderMode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RenderMode.swift; sourceTree = "<group>"; };
 		55DF6A06A19924BA8F800B53 /* PlaneCoveragePainter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaneCoveragePainter.swift; sourceTree = "<group>"; };
 		5BA094D6CB787297F110D80A /* CaptureSessionModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureSessionModel.swift; sourceTree = "<group>"; };
@@ -111,6 +122,19 @@
 		B8922E219286394E89E4A501 /* CDPlaceholderViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = CDPlaceholderViewController.m; sourceTree = "<group>"; };
 		B940E3F2440C393E02D0462E /* MeshCaptureRecordStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeshCaptureRecordStore.swift; sourceTree = "<group>"; };
 		B94C55EC2953D159D3F80AEA /* CDPendingTabViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = CDPendingTabViewController.m; sourceTree = "<group>"; };
+		A7B4C8D9E0F1122334455668 /* CDCapturePlanViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = CDCapturePlanViewController.h; sourceTree = "<group>"; };
+		A7B4C8D9E0F1122334455669 /* CDCapturePlanViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = CDCapturePlanViewController.m; sourceTree = "<group>"; };
+		A12B34C56D789E01F2345680 /* PathPlot2D.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PathPlot2D.swift; sourceTree = "<group>"; };
+		A12B34C56D789E01F2345681 /* CDSShapeCaptureHostViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CDSShapeCaptureHostViewController.swift; sourceTree = "<group>"; };
+		A12B34C56D789E01F2345682 /* CDSShapeShootViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = CDSShapeShootViewController.h; sourceTree = "<group>"; };
+		A12B34C56D789E01F2345683 /* CDSShapeShootViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = CDSShapeShootViewController.m; sourceTree = "<group>"; };
+		A12B34C56D789E01F2345684 /* LiveTrajectoryPreviewStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveTrajectoryPreviewStore.swift; sourceTree = "<group>"; };
+		A12B34C56D789E01F2345691 /* CDReshootCaptureHostViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CDReshootCaptureHostViewController.swift; sourceTree = "<group>"; };
+		A12B34C56D789E01F2345692 /* CDReshootShootViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = CDReshootShootViewController.h; sourceTree = "<group>"; };
+		A12B34C56D789E01F2345693 /* CDReshootShootViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = CDReshootShootViewController.m; sourceTree = "<group>"; };
+		B8D2D8C7E0A1B2C3D4E5F602 /* CDWallOrbitShootViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = CDWallOrbitShootViewController.h; sourceTree = "<group>"; };
+		B8D2D8C7E0A1B2C3D4E5F603 /* CDWallOrbitShootViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = CDWallOrbitShootViewController.m; sourceTree = "<group>"; };
+		C1A2B3C4D5E6F708192A3B4E /* CDWallOrbitCaptureHostViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CDWallOrbitCaptureHostViewController.swift; sourceTree = "<group>"; };
 		C4DA18D87E38BC24A965D6B8 /* VideoPoseRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoPoseRecorder.swift; sourceTree = "<group>"; };
 		CB225DCFA0198B060FC9B9E1 /* CaptureDemoTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = CaptureDemoTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		CCF8337DEE9500D59AF6EFEB /* CDCameraService.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = CDCameraService.m; sourceTree = "<group>"; };
@@ -181,19 +205,50 @@
 				5BA094D6CB787297F110D80A /* CaptureSessionModel.swift */,
 				20CCBC685097209922BF8350 /* ContentView.swift */,
 				0AAE88B97D5213031E509854 /* DepthCoverageAccumulator.swift */,
+				4B8E2A6C1F9347D5A0B2C3E4 /* LiveMeshPreviewSceneStore.swift */,
 				B940E3F2440C393E02D0462E /* MeshCaptureRecordStore.swift */,
 				B810778D80147703E5B384A6 /* MeshGeometryBuilder.swift */,
 				DC5E8B907DE8ED89E5CFC684 /* MeshOBJExporter.swift */,
 				7514B37A6EE331223D7AA398 /* MeshPreviewRenderer.swift */,
 				6E2A5FE56765810AF9D06E52 /* MeshReviewSceneBuilder.swift */,
-				55DF6A06A19924BA8F800B53 /* PlaneCoveragePainter.swift */,
-				37F8F36807E29CE39A3CF2D9 /* PointCloudAccumulator.swift */,
-				516166F25DC1DCDB3317767E /* RenderMode.swift */,
-				FF9721F113FEB9BF42CBE12C /* SimpleZipWriter.swift */,
-				D2900D5D6AF2A90598252FA7 /* SkyboxCoverageAccumulator.swift */,
+		55DF6A06A19924BA8F800B53 /* PlaneCoveragePainter.swift */,
+		37F8F36807E29CE39A3CF2D9 /* PointCloudAccumulator.swift */,
+		516166F25DC1DCDB3317767E /* RenderMode.swift */,
+		A12B34C56D789E01F2345680 /* PathPlot2D.swift */,
+		FF9721F113FEB9BF42CBE12C /* SimpleZipWriter.swift */,
+		D2900D5D6AF2A90598252FA7 /* SkyboxCoverageAccumulator.swift */,
 				C4DA18D87E38BC24A965D6B8 /* VideoPoseRecorder.swift */,
 			);
 			path = RoomShootFeature;
+			sourceTree = "<group>";
+		};
+		A12B34C56D789E01F2345694 /* ReshootShootFeature */ = {
+			isa = PBXGroup;
+			children = (
+				A12B34C56D789E01F2345691 /* CDReshootCaptureHostViewController.swift */,
+				A12B34C56D789E01F2345692 /* CDReshootShootViewController.h */,
+				A12B34C56D789E01F2345693 /* CDReshootShootViewController.m */,
+			);
+			path = ReshootShootFeature;
+			sourceTree = "<group>";
+		};
+		A12B34C56D789E01F2345690 /* SShapeShootFeature */ = {
+			isa = PBXGroup;
+			children = (
+				A12B34C56D789E01F2345681 /* CDSShapeCaptureHostViewController.swift */,
+				A12B34C56D789E01F2345682 /* CDSShapeShootViewController.h */,
+				A12B34C56D789E01F2345683 /* CDSShapeShootViewController.m */,
+				A12B34C56D789E01F2345684 /* LiveTrajectoryPreviewStore.swift */,
+			);
+			path = SShapeShootFeature;
+			sourceTree = "<group>";
+		};
+		C1A2B3C4D5E6F708192A3B4F /* WallOrbitShootFeature */ = {
+			isa = PBXGroup;
+			children = (
+				C1A2B3C4D5E6F708192A3B4E /* CDWallOrbitCaptureHostViewController.swift */,
+			);
+			path = WallOrbitShootFeature;
 			sourceTree = "<group>";
 		};
 		392A30772B98819E0BF152B2 /* Frameworks */ = {
@@ -294,6 +349,7 @@
 			children = (
 				643D08CFF99EF83A5EE8D712 /* CDCameraSettingsViewController.h */,
 				423CA50CC27C68F3DB672107 /* CDCameraSettingsViewController.m */,
+				B8D2D8C7E0A1B2C3D4E5F604 /* CapturePlan */,
 				5A02F2729CBE5766D608A385 /* Common */,
 				F5821BF82A1702FA6EE61A84 /* MainTabs */,
 				C70A8CEFB3620C5C7D5BDDC4 /* MeshCamera */,
@@ -337,8 +393,22 @@
 			children = (
 				9B513ED97A97505EF21CDE11 /* CDMainTabBarController.h */,
 				E74344B24886DADD8580AEB6 /* CDMainTabBarController.m */,
+				A7B4C8D9E0F1122334455668 /* CDCapturePlanViewController.h */,
+				A7B4C8D9E0F1122334455669 /* CDCapturePlanViewController.m */,
 			);
 			path = MainTabs;
+			sourceTree = "<group>";
+		};
+		B8D2D8C7E0A1B2C3D4E5F604 /* CapturePlan */ = {
+			isa = PBXGroup;
+			children = (
+				B8D2D8C7E0A1B2C3D4E5F602 /* CDWallOrbitShootViewController.h */,
+				B8D2D8C7E0A1B2C3D4E5F603 /* CDWallOrbitShootViewController.m */,
+				A12B34C56D789E01F2345694 /* ReshootShootFeature */,
+				A12B34C56D789E01F2345690 /* SShapeShootFeature */,
+				C1A2B3C4D5E6F708192A3B4F /* WallOrbitShootFeature */,
+			);
+			path = CapturePlan;
 			sourceTree = "<group>";
 		};
 		FF831BC9F7883F5EAF5A32AC /* CaptureDemo */ = {
@@ -440,6 +510,14 @@
 				959F756DE664F508525632D6 /* CDCameraSettingsViewController.m in Sources */,
 				DB2B3DA81A4423EAE02B2FDF /* CDCameraViewController.m in Sources */,
 				145DADD88275BB22C8EF0117 /* CDFeatureHomeViewController.m in Sources */,
+				A7B4C8D9E0F1122334455667 /* CDCapturePlanViewController.m in Sources */,
+				B8D2D8C7E0A1B2C3D4E5F601 /* CDWallOrbitShootViewController.m in Sources */,
+				C1A2B3C4D5E6F708192A3B4D /* CDWallOrbitCaptureHostViewController.swift in Sources */,
+				A12B34C56D789E01F2345695 /* CDReshootCaptureHostViewController.swift in Sources */,
+				A12B34C56D789E01F2345696 /* CDReshootShootViewController.m in Sources */,
+				A12B34C56D789E01F2345679 /* CDSShapeCaptureHostViewController.swift in Sources */,
+				A12B34C56D789E01F234567A /* CDSShapeShootViewController.m in Sources */,
+				A12B34C56D789E01F234567B /* LiveTrajectoryPreviewStore.swift in Sources */,
 				527B150E25EE34903877876E /* CDMainTabBarController.m in Sources */,
 				6B2D38B68135EB6D948BA675 /* CDMeshCameraViewController.m in Sources */,
 				C9854FD1F83919D2835D6BEF /* CDMeshCaptureDetailViewController.swift in Sources */,
@@ -458,10 +536,12 @@
 				BE0908859B8D489AC69AB6B8 /* CaptureSessionModel.swift in Sources */,
 				FF5ECDF5A4FCBF277A215EAF /* ContentView.swift in Sources */,
 				7ADD782B5DC44BC5E1AF9D58 /* DepthCoverageAccumulator.swift in Sources */,
+				7D4F2C9A8B6143E5F0A1B2C3 /* LiveMeshPreviewSceneStore.swift in Sources */,
 				9AC81C167A47883702581175 /* MeshCaptureRecordStore.swift in Sources */,
 				F1327A000D9CEEA0E508EF81 /* MeshGeometryBuilder.swift in Sources */,
 				F497F177A814B250B3436E1F /* MeshOBJExporter.swift in Sources */,
 				34F09F69EFF652ABDD44C000 /* MeshPreviewRenderer.swift in Sources */,
+				A12B34C56D789E01F2345678 /* PathPlot2D.swift in Sources */,
 				6E80DAE65FA2A6D72F6FEAAA /* MeshReviewSceneBuilder.swift in Sources */,
 				64E68568C429FD02FB4C0BAA /* PlaneCoveragePainter.swift in Sources */,
 				8226CC93FC928695F7076133 /* PointCloudAccumulator.swift in Sources */,

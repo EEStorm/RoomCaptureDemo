@@ -22,6 +22,8 @@ struct ARSCNViewContainer: UIViewRepresentable {
     @Binding var reviewSnapshotRequestCounter: Int
     @Binding var reviewMeshExportRequestCounter: Int
     @Binding var reviewMeshExportFolderPath: String?
+    let liveMeshPreviewStore: LiveMeshPreviewSceneStore?
+    let showsMainMeshOverlay: Bool
 
     let onMotionUpdate: (Double, Double, Bool) -> Void
     let onPointCloudStatsUpdate: (Bool, Int, Int, Int) -> Void
@@ -41,7 +43,9 @@ struct ARSCNViewContainer: UIViewRepresentable {
             onSkyboxCoverageStatsUpdate: onSkyboxCoverageStatsUpdate,
             onFrameForRecording: onFrameForRecording,
             onReviewSnapshotReady: onReviewSnapshotReady,
-            onReviewMeshExportReady: onReviewMeshExportReady
+            onReviewMeshExportReady: onReviewMeshExportReady,
+            liveMeshPreviewStore: liveMeshPreviewStore,
+            showsMainMeshOverlay: showsMainMeshOverlay
         )
     }
 
@@ -85,6 +89,8 @@ struct ARSCNViewContainer: UIViewRepresentable {
         private let onFrameForRecording: (ARFrame) -> Void
         private let onReviewSnapshotReady: (UIImage) -> Void
         private let onReviewMeshExportReady: (URL, Int, Int, Int) -> Void
+        private let liveMeshPreviewStore: LiveMeshPreviewSceneStore?
+        private let showsMainMeshOverlay: Bool
 
         var renderMode: RenderMode = .mesh {
             didSet {
@@ -144,7 +150,9 @@ struct ARSCNViewContainer: UIViewRepresentable {
             onSkyboxCoverageStatsUpdate: @escaping (Double) -> Void,
             onFrameForRecording: @escaping (ARFrame) -> Void,
             onReviewSnapshotReady: @escaping (UIImage) -> Void,
-            onReviewMeshExportReady: @escaping (URL, Int, Int, Int) -> Void
+            onReviewMeshExportReady: @escaping (URL, Int, Int, Int) -> Void,
+            liveMeshPreviewStore: LiveMeshPreviewSceneStore?,
+            showsMainMeshOverlay: Bool
         ) {
             _isRecording = isRecording
             _isMovingTooFast = isMovingTooFast
@@ -155,6 +163,8 @@ struct ARSCNViewContainer: UIViewRepresentable {
             self.onFrameForRecording = onFrameForRecording
             self.onReviewSnapshotReady = onReviewSnapshotReady
             self.onReviewMeshExportReady = onReviewMeshExportReady
+            self.liveMeshPreviewStore = liveMeshPreviewStore
+            self.showsMainMeshOverlay = showsMainMeshOverlay
 
             pointCloudNode.name = "pointCloud"
             depthCoverageNode.name = "depthCoverage"
@@ -286,7 +296,7 @@ struct ARSCNViewContainer: UIViewRepresentable {
             skyboxNode.isHidden = (renderMode != .skyboxCoverage)
             rootNode?.enumerateChildNodes { node, _ in
                 if node.name == "mesh" {
-                    node.isHidden = (self.renderMode != .mesh || !self.recordingEnabled)
+                    node.isHidden = (self.renderMode != .mesh || !self.recordingEnabled || !self.showsMainMeshOverlay)
                 }
             }
             for (_, state) in planeCoverage {
@@ -316,6 +326,14 @@ struct ARSCNViewContainer: UIViewRepresentable {
         func session(_ session: ARSession, didUpdate frame: ARFrame) {
             updateMotionState(frame: frame)
             onFrameForRecording(frame)
+
+            if renderMode == .mesh, recordingEnabled {
+                let cameraTransform = frame.camera.transform
+                let timestamp = frame.timestamp
+                DispatchQueue.main.async { [weak self] in
+                    self?.liveMeshPreviewStore?.updateDeviceOrientation(cameraTransform: cameraTransform, timestamp: timestamp)
+                }
+            }
 
             if renderMode == .pointCloud {
                 pointCloud.ingest(frame: frame)
@@ -585,19 +603,35 @@ struct ARSCNViewContainer: UIViewRepresentable {
             lastCameraTransform = currentTransform
         }
 
+        private func makeMeshGeometry(for meshAnchor: ARMeshAnchor) -> SCNGeometry {
+            let geometry = MeshGeometryBuilder.buildGeometry(from: meshAnchor.geometry)
+            guard renderMode == .mesh, recordingEnabled else { return geometry }
+
+            DispatchQueue.main.async { [weak self] in
+                self?.liveMeshPreviewStore?.upsert(
+                    anchorID: meshAnchor.identifier,
+                    transform: meshAnchor.transform,
+                    geometry: geometry
+                )
+            }
+
+            return geometry
+        }
+
+        private func removeLiveMeshPreview(anchorID: UUID) {
+            DispatchQueue.main.async { [weak self] in
+                self?.liveMeshPreviewStore?.remove(anchorID: anchorID)
+            }
+        }
+
         // MARK: ARSCNViewDelegate (网格渲染)
 
         func renderer(_ renderer: SCNSceneRenderer, nodeFor anchor: ARAnchor) -> SCNNode? {
             if renderMode == .mesh, let meshAnchor = anchor as? ARMeshAnchor {
                 let node = SCNNode()
                 node.name = "mesh"
-                if recordingEnabled {
-                    node.geometry = MeshGeometryBuilder.buildGeometry(from: meshAnchor.geometry)
-                    node.isHidden = false
-                } else {
-                    node.geometry = nil
-                    node.isHidden = true
-                }
+                node.geometry = makeMeshGeometry(for: meshAnchor)
+                node.isHidden = !recordingEnabled || !showsMainMeshOverlay
                 return node
             }
 
@@ -633,8 +667,8 @@ struct ARSCNViewContainer: UIViewRepresentable {
                     return
                 }
                 node.name = "mesh"
-                node.isHidden = false
-                node.geometry = MeshGeometryBuilder.buildGeometry(from: meshAnchor.geometry)
+                node.isHidden = !showsMainMeshOverlay
+                node.geometry = makeMeshGeometry(for: meshAnchor)
                 return
             }
 
@@ -691,6 +725,11 @@ struct ARSCNViewContainer: UIViewRepresentable {
                 state.node.isHidden = false
                 return
             }
+        }
+
+        func renderer(_ renderer: SCNSceneRenderer, didRemove node: SCNNode, for anchor: ARAnchor) {
+            guard anchor is ARMeshAnchor else { return }
+            removeLiveMeshPreview(anchorID: anchor.identifier)
         }
     }
 }

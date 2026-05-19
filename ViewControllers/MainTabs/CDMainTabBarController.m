@@ -1,6 +1,7 @@
 #import "CDMainTabBarController.h"
 #import "CDCameraViewController.h"
 #import "CDFeatureHomeViewController.h"
+#import "CDCapturePlanViewController.h"
 #import "CDMeshCameraViewController.h"
 #import "CDPendingTabViewController.h"
 #import "CDStereoCameraViewController.h"
@@ -18,13 +19,12 @@
         [self navigationControllerWithTitle:@"mesh相机"
                                       image:@"square.3.layers.3d"
                          destinationBuilder:^UIViewController *{
-                             return [[CDMeshCameraViewController alloc] init];
+                                return [[CDMeshCameraViewController alloc] init];
                          }],
-        [self navigationControllerWithTitle:@"双目相机"
-                                      image:@"camera.metering.matrix"
-                         destinationBuilder:^UIViewController *{
-                             return [[CDStereoCameraViewController alloc] init];
-                         }],
+
+        [self navigationControllerWithRootViewController:[[CDCapturePlanViewController alloc] init]
+                                                    title:@"拍摄方案"
+                                                    image:@"viewfinder"],
         [self navigationControllerWithTitle:@"待定"
                                       image:@"ellipsis.circle"
                          destinationBuilder:^UIViewController *{
@@ -40,6 +40,15 @@
                                                                                                    buttonTitle:@"进入拍摄页面"
                                                                                           destinationBuilder:builder];
     UINavigationController *navigationController = [[UINavigationController alloc] initWithRootViewController:homeViewController];
+    navigationController.tabBarItem.title = title;
+    navigationController.tabBarItem.image = [UIImage systemImageNamed:imageName];
+    return navigationController;
+}
+
+- (UINavigationController *)navigationControllerWithRootViewController:(UIViewController *)rootViewController
+                                                                  title:(NSString *)title
+                                                                  image:(NSString *)imageName {
+    UINavigationController *navigationController = [[UINavigationController alloc] initWithRootViewController:rootViewController];
     navigationController.tabBarItem.title = title;
     navigationController.tabBarItem.image = [UIImage systemImageNamed:imageName];
     return navigationController;

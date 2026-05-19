@@ -71,6 +71,13 @@ final class CaptureSessionModel: ObservableObject {
         guard !isRecording else { return }
         lastExportSummary = nil
         isPackaging = false
+        isReviewPresented = false
+        isGeneratingReview = false
+        reviewPayload = nil
+        reviewMeshExportFolderPath = nil
+        pendingExportForReview = nil
+        pendingReviewSnapshot = nil
+        pendingReviewMeshExport = nil
         recorder.startNewRecording()
         isRecording = true
         UIApplication.shared.isIdleTimerDisabled = true
