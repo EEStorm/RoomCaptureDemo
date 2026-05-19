@@ -7,6 +7,7 @@ NS_ASSUME_NONNULL_BEGIN
 @interface CD3DGSTrainingResultViewController : UIViewController
 
 - (instancetype)initWithSummary:(CD3DGSTrainingResultSummary *)summary;
+- (instancetype)initWithSummary:(CD3DGSTrainingResultSummary *)summary singleRoomDemoFlow:(BOOL)singleRoomDemoFlow;
 - (instancetype)init NS_UNAVAILABLE;
 - (instancetype)initWithCoder:(NSCoder *)coder NS_UNAVAILABLE;
 

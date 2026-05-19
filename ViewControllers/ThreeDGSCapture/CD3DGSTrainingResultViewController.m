@@ -84,15 +84,21 @@ static const CGFloat CD3DGSScreenMargin = 16.0;
 @property (nonatomic, strong) UIScrollView *scrollView;
 @property (nonatomic, strong) UIStackView *contentStack;
 @property (nonatomic, strong) UIView *bottomBar;
+@property (nonatomic, assign) BOOL singleRoomDemoFlow;
 
 @end
 
 @implementation CD3DGSTrainingResultViewController
 
 - (instancetype)initWithSummary:(CD3DGSTrainingResultSummary *)summary {
+    return [self initWithSummary:summary singleRoomDemoFlow:NO];
+}
+
+- (instancetype)initWithSummary:(CD3DGSTrainingResultSummary *)summary singleRoomDemoFlow:(BOOL)singleRoomDemoFlow {
     self = [super initWithNibName:nil bundle:nil];
     if (self) {
         _summary = summary;
+        _singleRoomDemoFlow = singleRoomDemoFlow;
     }
     return self;
 }
@@ -209,8 +215,10 @@ static const CGFloat CD3DGSScreenMargin = 16.0;
     [self.contentStack addArrangedSubview:[self buildStatusCard]];
     [self.contentStack addArrangedSubview:[self buildPreviewCard]];
     [self.contentStack addArrangedSubview:[self buildQualityCard]];
-    [self.contentStack addArrangedSubview:[self buildRoomResultCard]];
-    [self.contentStack addArrangedSubview:[self buildRiskCard]];
+    if (!self.singleRoomDemoFlow) {
+        [self.contentStack addArrangedSubview:[self buildRoomResultCard]];
+        [self.contentStack addArrangedSubview:[self buildRiskCard]];
+    }
 }
 
 - (UIView *)buildStatusCard {
@@ -260,7 +268,7 @@ static const CGFloat CD3DGSScreenMargin = 16.0;
     preview.translatesAutoresizingMaskIntoConstraints = NO;
     [card addSubview:preview];
 
-    UILabel *roomChip = [self overlayChipWithText:@"客厅 · 3D预览"];
+    UILabel *roomChip = [self overlayChipWithText:(self.singleRoomDemoFlow ? @"示例房间 · 3D预览" : @"客厅 · 3D预览")];
     [preview addSubview:roomChip];
 
     UILabel *timeChip = [self overlayChipWithText:self.summary.generatedAtText];

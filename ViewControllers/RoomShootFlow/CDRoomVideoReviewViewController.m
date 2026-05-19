@@ -2,6 +2,9 @@
 
 #import "CDInsetLabel.h"
 #import "CDRoomItem.h"
+#import "../ThreeDGSCapture/CD3DGSCaptureViewController.h"
+#import "../ThreeDGSCapture/CD3DGSTrainingResultSummary.h"
+#import "../ThreeDGSCapture/CD3DGSTrainingResultViewController.h"
 
 #import <AVFoundation/AVFoundation.h>
 #import <AVKit/AVKit.h>
@@ -9,6 +12,9 @@
 @interface CDRoomVideoReviewViewController () {
     CDRoomItem *_room;
     NSURL *_remoteVideoURL;
+    NSArray<NSURL *> *_videoURLs;
+    NSInteger _selectedVideoIndex;
+    BOOL _singleRoomDemoFlow;
     UIScrollView *_scrollView;
     UIView *_contentView;
 
@@ -64,8 +70,28 @@
     if (self) {
         _room = room;
         _remoteVideoURL = [self.class demoVideoURLForRoom:room];
+        _videoURLs = _remoteVideoURL ? @[_remoteVideoURL] : @[];
+        _selectedVideoIndex = 0;
         _selectedFrameIndex = 1;
         _selectedSeconds = 12;
+    }
+    return self;
+}
+
+- (instancetype)initWithRoom:(CDRoomItem *)room videoURLs:(NSArray<NSURL *> *)videoURLs {
+    return [self initWithRoom:room videoURLs:videoURLs singleRoomDemoFlow:NO];
+}
+
+- (instancetype)initWithRoom:(CDRoomItem *)room videoURLs:(NSArray<NSURL *> *)videoURLs singleRoomDemoFlow:(BOOL)singleRoomDemoFlow {
+    self = [super initWithNibName:nil bundle:nil];
+    if (self) {
+        _room = room;
+        _videoURLs = [videoURLs copy] ?: @[];
+        _remoteVideoURL = _videoURLs.firstObject;
+        _selectedVideoIndex = 0;
+        _selectedFrameIndex = 0;
+        _selectedSeconds = 0;
+        _singleRoomDemoFlow = singleRoomDemoFlow;
     }
     return self;
 }
@@ -97,11 +123,23 @@
 }
 
 - (NSURL *)localVideoURL {
+    NSURL *selectedURL = [self selectedVideoURL];
+    if (selectedURL.isFileURL) {
+        return selectedURL;
+    }
+
     NSString *cacheRoot = [NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES).firstObject stringByAppendingPathComponent:@"DemoVideoCache"];
     [[NSFileManager defaultManager] createDirectoryAtPath:cacheRoot withIntermediateDirectories:YES attributes:nil error:nil];
     NSString *roomKey = _room.roomId.length > 0 ? _room.roomId : @"unknown";
-    NSString *fileName = [NSString stringWithFormat:@"room_%@.mp4", roomKey];
+    NSString *fileName = [NSString stringWithFormat:@"room_%@_%ld.mp4", roomKey, (long)_selectedVideoIndex];
     return [NSURL fileURLWithPath:[cacheRoot stringByAppendingPathComponent:fileName]];
+}
+
+- (NSURL *)selectedVideoURL {
+    if (_selectedVideoIndex >= 0 && _selectedVideoIndex < (NSInteger)_videoURLs.count) {
+        return _videoURLs[(NSUInteger)_selectedVideoIndex];
+    }
+    return _remoteVideoURL;
 }
 
 - (BOOL)isVideoCached {
@@ -109,12 +147,13 @@
 }
 
 - (void)startDownloadIfNeeded {
-    if (!_remoteVideoURL || [self isVideoCached] || _downloadTask != nil) {
+    NSURL *downloadURL = [self selectedVideoURL];
+    if (!downloadURL || downloadURL.isFileURL || [self isVideoCached] || _downloadTask != nil) {
         return;
     }
 
     __weak typeof(self) weakSelf = self;
-    _downloadTask = [[NSURLSession sharedSession] downloadTaskWithURL:_remoteVideoURL completionHandler:^(NSURL * _Nullable location, NSURLResponse * _Nullable response, NSError * _Nullable error) {
+    _downloadTask = [[NSURLSession sharedSession] downloadTaskWithURL:downloadURL completionHandler:^(NSURL * _Nullable location, NSURLResponse * _Nullable response, NSError * _Nullable error) {
         __strong typeof(weakSelf) self = weakSelf;
         if (!self) {
             return;
@@ -177,12 +216,13 @@
 }
 
 - (void)playRemoteVideoWithSeekSeconds:(NSTimeInterval)seconds {
-    if (!_remoteVideoURL) {
+    NSURL *playURL = [self selectedVideoURL];
+    if (!playURL) {
         [self showSimpleAlertWithTitle:@"无法播放" message:@"缺少视频地址"];
         return;
     }
 
-    AVPlayerItem *item = [AVPlayerItem playerItemWithURL:_remoteVideoURL];
+    AVPlayerItem *item = [AVPlayerItem playerItemWithURL:playURL];
     if (_currentPlayerItem) {
         [[NSNotificationCenter defaultCenter] removeObserver:self name:AVPlayerItemFailedToPlayToEndTimeNotification object:_currentPlayerItem];
         [[NSNotificationCenter defaultCenter] removeObserver:self name:AVPlayerItemPlaybackStalledNotification object:_currentPlayerItem];
@@ -398,7 +438,7 @@
     _durLabel.translatesAutoresizingMaskIntoConstraints = NO;
     _durLabel.font = [UIFont systemFontOfSize:13 weight:UIFontWeightHeavy];
     _durLabel.textColor = [UIColor colorWithRed:102/255.0 green:102/255.0 blue:102/255.0 alpha:1.0];
-    _durLabel.text = @"02:42";
+    _durLabel.text = _videoURLs.count > 1 ? [NSString stringWithFormat:@"%ld段素材", (long)_videoURLs.count] : @"02:42";
     [metaRow addSubview:_durLabel];
 
     [NSLayoutConstraint activateConstraints:@[
@@ -494,7 +534,11 @@
 
     _frameControls = [NSMutableArray array];
     _frameImageViews = [NSMutableArray array];
-    for (NSInteger index = 0; index < 6; index++) {
+    NSInteger frameCount = MAX((NSInteger)_videoURLs.count, 1);
+    if (_videoURLs.count <= 1) {
+        frameCount = 6;
+    }
+    for (NSInteger index = 0; index < frameCount; index++) {
         UIControl *frame = [[UIControl alloc] initWithFrame:CGRectZero];
         frame.backgroundColor = [UIColor colorWithRed:240/255.0 green:240/255.0 blue:240/255.0 alpha:1.0];
         frame.layer.cornerRadius = 8;
@@ -527,7 +571,7 @@
         timeLabel.layer.cornerRadius = 2;
         timeLabel.clipsToBounds = YES;
         timeLabel.textAlignment = NSTextAlignmentCenter;
-        timeLabel.text = [NSString stringWithFormat:@"%lds", (long)(index * 12)];
+        timeLabel.text = _videoURLs.count > 1 ? [NSString stringWithFormat:@"第%ld步", (long)index + 1] : [NSString stringWithFormat:@"%lds", (long)(index * 12)];
         [frame addSubview:timeLabel];
         [NSLayoutConstraint activateConstraints:@[
             [timeLabel.trailingAnchor constraintEqualToAnchor:frame.trailingAnchor constant:-3],
@@ -798,7 +842,12 @@
         return;
     }
 
-    NSURL *assetURL = [self isVideoCached] ? [self localVideoURL] : _remoteVideoURL;
+    if (_videoURLs.count > 1) {
+        [self generateCapturedVideoThumbnailsIfNeeded];
+        return;
+    }
+
+    NSURL *assetURL = [self isVideoCached] ? [self localVideoURL] : [self selectedVideoURL];
     if (!assetURL) {
         return;
     }
@@ -850,7 +899,53 @@
     }];
 }
 
+- (void)generateCapturedVideoThumbnailsIfNeeded {
+    _thumbnailRequestID += 1;
+    NSInteger requestID = _thumbnailRequestID;
+
+    for (NSInteger index = 0; index < (NSInteger)_videoURLs.count; index++) {
+        NSURL *assetURL = _videoURLs[(NSUInteger)index];
+        if (!assetURL) {
+            continue;
+        }
+
+        AVURLAsset *asset = [AVURLAsset URLAssetWithURL:assetURL options:nil];
+        AVAssetImageGenerator *generator = [[AVAssetImageGenerator alloc] initWithAsset:asset];
+        generator.appliesPreferredTrackTransform = YES;
+        generator.maximumSize = CGSizeMake(720, 720);
+        generator.requestedTimeToleranceBefore = kCMTimeZero;
+        generator.requestedTimeToleranceAfter = kCMTimeZero;
+        NSArray<NSValue *> *times = @[[NSValue valueWithCMTime:CMTimeMakeWithSeconds(0.1, NSEC_PER_SEC)]];
+
+        __weak typeof(self) weakSelf = self;
+        [generator generateCGImagesAsynchronouslyForTimes:times completionHandler:^(CMTime requestedTime, CGImageRef  _Nullable cgImage, CMTime actualTime, AVAssetImageGeneratorResult result, NSError * _Nullable error) {
+            __strong typeof(weakSelf) self = weakSelf;
+            if (!self || self->_thumbnailRequestID != requestID || result != AVAssetImageGeneratorSucceeded || !cgImage) {
+                return;
+            }
+
+            UIImage *image = [UIImage imageWithCGImage:cgImage];
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if (self->_thumbnailRequestID != requestID || index >= (NSInteger)self->_frameImageViews.count) {
+                    return;
+                }
+                self->_frameImageViews[(NSUInteger)index].image = image;
+                if (index == self->_selectedVideoIndex) {
+                    self->_coverImageView.image = image;
+                }
+            });
+            (void)requestedTime;
+            (void)actualTime;
+            (void)error;
+        }];
+    }
+}
+
 - (NSInteger)nearestFrameIndexForSeconds:(NSTimeInterval)seconds {
+    if (_videoURLs.count > 1) {
+        return _selectedVideoIndex;
+    }
+
     NSInteger index = (NSInteger)llround(seconds / 12.0);
     if (index < 0) {
         index = 0;
@@ -1186,7 +1281,8 @@
         _backendMessageLabel.hidden = YES;
         _deviceSummaryLabel.text = @"审核中｜可先对照以下建议自查";
     } else if (_room.auditStatus == 2) {
-        [_rightBtn setTitle:@"返回概览" forState:UIControlStateNormal];
+        [_leftBtn setTitle:@"重录此房间" forState:UIControlStateNormal];
+        [_rightBtn setTitle:(_singleRoomDemoFlow ? @"确认提交" : @"返回概览") forState:UIControlStateNormal];
         _backendCard.backgroundColor = successBackground;
         _backendCard.layer.borderWidth = 1;
         _backendCard.layer.borderColor = [UIColor colorWithRed:0/255.0 green:166/255.0 blue:102/255.0 alpha:0.25].CGColor;
@@ -1238,6 +1334,16 @@
 }
 
 - (void)leftAction {
+    if (_singleRoomDemoFlow) {
+        CD3DGSCaptureViewController *captureVC = [[CD3DGSCaptureViewController alloc] init];
+        NSMutableArray<UIViewController *> *viewControllers = [self.navigationController.viewControllers mutableCopy];
+        if (viewControllers.count > 0) {
+            [viewControllers removeLastObject];
+        }
+        [viewControllers addObject:captureVC];
+        [self.navigationController setViewControllers:viewControllers animated:YES];
+        return;
+    }
     [self.navigationController popViewControllerAnimated:YES];
 }
 
@@ -1251,6 +1357,13 @@
         return;
     }
     if (_room.auditStatus == 2) {
+        if (_singleRoomDemoFlow) {
+            CD3DGSTrainingResultSummary *summary = [CD3DGSTrainingResultSummary demoSummary];
+            CD3DGSTrainingResultViewController *trainingVC = [[CD3DGSTrainingResultViewController alloc] initWithSummary:summary
+                                                                                                        singleRoomDemoFlow:YES];
+            [self.navigationController pushViewController:trainingVC animated:YES];
+            return;
+        }
         [self.navigationController popViewControllerAnimated:YES];
         return;
     }
@@ -1270,8 +1383,21 @@
         [self showSimpleAlertWithTitle:@"未完成采集" message:@"请先完成该房间采集后再播放"];
         return;
     }
-    _selectedSeconds = sender.tag * 12;
-    _selectedFrameIndex = [self nearestFrameIndexForSeconds:_selectedSeconds];
+    if (_videoURLs.count > 1) {
+        _selectedVideoIndex = sender.tag;
+        _remoteVideoURL = [self selectedVideoURL];
+        _selectedSeconds = 0;
+        _selectedFrameIndex = _selectedVideoIndex;
+        if (_selectedFrameIndex >= 0 && _selectedFrameIndex < (NSInteger)_frameImageViews.count) {
+            _coverImageView.image = _frameImageViews[_selectedFrameIndex].image;
+        }
+        if (!_coverImageView.image) {
+            [self generateVideoThumbnailsIfNeeded];
+        }
+    } else {
+        _selectedSeconds = sender.tag * 12;
+        _selectedFrameIndex = [self nearestFrameIndexForSeconds:_selectedSeconds];
+    }
     [self updateSelectedFrameUI];
 }
 

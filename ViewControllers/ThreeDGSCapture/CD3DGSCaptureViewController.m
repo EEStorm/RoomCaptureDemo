@@ -1,9 +1,10 @@
 #import "CD3DGSCaptureViewController.h"
 #import "CD3DGSCaptureGuidanceState.h"
 #import "CD3DGSCameraService.h"
-#import "CD3DGSStepVideoReviewViewController.h"
 #import "CD3DGSVideoListViewController.h"
 #import "CDCameraSettingsViewController.h"
+#import "../RoomShootFlow/CDRoomItem.h"
+#import "../RoomShootFlow/CDRoomVideoReviewViewController.h"
 #import <AVFoundation/AVFoundation.h>
 #import <CoreMotion/CoreMotion.h>
 #import <ImageIO/ImageIO.h>
@@ -1422,9 +1423,21 @@
     [self updateGuidanceUI];
 
     if (self.guidanceState.isComplete) {
-        CD3DGSStepVideoReviewViewController *reviewVC = [[CD3DGSStepVideoReviewViewController alloc] initWithVideoURLs:self.guidanceState.completedVideoURLs];
+        CDRoomVideoReviewViewController *reviewVC = [[CDRoomVideoReviewViewController alloc] initWithRoom:[self demoPassedRoom]
+                                                                                                videoURLs:self.guidanceState.completedVideoURLs
+                                                                                      singleRoomDemoFlow:YES];
         [self.navigationController pushViewController:reviewVC animated:YES];
     }
+}
+
+- (CDRoomItem *)demoPassedRoom {
+    CDRoomItem *room = [[CDRoomItem alloc] init];
+    room.roomId = @"demo_passed_room";
+    room.roomName = @"示例房间（已通过）";
+    room.captureComplete = YES;
+    room.auditStatus = 2;
+    room.auditReason = @"";
+    return room;
 }
 
 - (void)goBack {

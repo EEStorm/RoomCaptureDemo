@@ -126,7 +126,7 @@
     subtitle.font = [UIFont systemFontOfSize:13];
     subtitle.textColor = [UIColor colorWithRed:102/255.0 green:102/255.0 blue:102/255.0 alpha:1.0];
     subtitle.numberOfLines = 0;
-    subtitle.text = @"请选择入口（2/3/4 可点击进入，1/5 敬请期待）";
+    subtitle.text = @"请选择入口：顶部为完整流程演示，下方为单独页面展示";
     [self.contentView addSubview:subtitle];
 
     self.stack = [[UIStackView alloc] initWithFrame:CGRectZero];
@@ -154,7 +154,41 @@
         CDFeatureHomeEntry *entry = self.entries[i];
         UIControl *card = [self entryCardForEntry:entry index:i];
         [self.stack addArrangedSubview:card];
+        if (i == 0) {
+            [self.stack addArrangedSubview:[self singlePageSectionDivider]];
+        }
     }
+}
+
+- (UIView *)singlePageSectionDivider {
+    UIView *container = [[UIView alloc] initWithFrame:CGRectZero];
+    container.translatesAutoresizingMaskIntoConstraints = NO;
+
+    UIView *line = [[UIView alloc] initWithFrame:CGRectZero];
+    line.translatesAutoresizingMaskIntoConstraints = NO;
+    line.backgroundColor = [UIColor colorWithRed:216/255.0 green:216/255.0 blue:216/255.0 alpha:1.0];
+    [container addSubview:line];
+
+    UILabel *label = [[UILabel alloc] initWithFrame:CGRectZero];
+    label.translatesAutoresizingMaskIntoConstraints = NO;
+    label.font = [UIFont systemFontOfSize:12 weight:UIFontWeightSemibold];
+    label.textColor = [UIColor colorWithRed:153/255.0 green:153/255.0 blue:153/255.0 alpha:1.0];
+    label.text = @"以下为单独页面展示";
+    [container addSubview:label];
+
+    [NSLayoutConstraint activateConstraints:@[
+        [container.heightAnchor constraintEqualToConstant:34],
+        [line.leadingAnchor constraintEqualToAnchor:container.leadingAnchor],
+        [line.trailingAnchor constraintEqualToAnchor:container.trailingAnchor],
+        [line.topAnchor constraintEqualToAnchor:container.topAnchor constant:8],
+        [line.heightAnchor constraintEqualToConstant:1],
+        [label.leadingAnchor constraintEqualToAnchor:container.leadingAnchor],
+        [label.topAnchor constraintEqualToAnchor:line.bottomAnchor constant:8],
+        [label.trailingAnchor constraintEqualToAnchor:container.trailingAnchor],
+        [label.bottomAnchor constraintLessThanOrEqualToAnchor:container.bottomAnchor]
+    ]];
+
+    return container;
 }
 
 - (UIColor *)iconBgForStyle:(CDFeatureHomeEntryStyle)style {
