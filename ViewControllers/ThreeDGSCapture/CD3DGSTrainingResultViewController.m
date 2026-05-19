@@ -1,5 +1,6 @@
 #import "CD3DGSTrainingResultViewController.h"
 #import "CD3DGSTrainingResultSummary.h"
+#import "CD3DGSRoomTourViewController.h"
 
 static const CGFloat CD3DGSCardRadius = 8.0;
 static const CGFloat CD3DGSScreenMargin = 16.0;
@@ -555,7 +556,9 @@ static const CGFloat CD3DGSScreenMargin = 16.0;
 }
 
 - (void)viewTourTapped {
-    [self presentMessageWithTitle:@"3D漫游" message:@"这里将打开高斯训练后的 3D 漫游预览。"];
+    CD3DGSRoomTourViewController *tourViewController = [[CD3DGSRoomTourViewController alloc] initWithRoomName:@"客厅"];
+    tourViewController.hidesBottomBarWhenPushed = YES;
+    [self.navigationController pushViewController:tourViewController animated:YES];
 }
 
 - (void)retrainTapped {
