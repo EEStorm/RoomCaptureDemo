@@ -1,4 +1,5 @@
 #import "CD3DGSCameraService.h"
+#import "CaptureDemo-Swift.h"
 #import <AVFoundation/AVFoundation.h>
 
 static NSString * const kCD3DGSCameraDidReloadNotification = @"CD3DGSCameraDidReload";
@@ -7,14 +8,19 @@ static NSString * const kCD3DGSCameraParametersLockDidChangeNotification = @"CD3
 NSString * const CD3DGSCameraDidFinishRecordingNotification = @"CD3DGSCameraDidFinishRecordingNotification";
 NSString * const CD3DGSCameraRecordingURLKey = @"CD3DGSCameraRecordingURLKey";
 
-@interface CD3DGSCameraService () <AVCaptureFileOutputRecordingDelegate>
+@interface CD3DGSCameraService () <AVCaptureFileOutputRecordingDelegate, AVCaptureVideoDataOutputSampleBufferDelegate>
 
 @property (nonatomic, strong) AVCaptureSession *captureSession;
 @property (nonatomic, strong) AVCaptureDevice *videoDevice;
 @property (nonatomic, strong) AVCaptureMovieFileOutput *videoOutput;
+@property (nonatomic, strong) AVCaptureVideoDataOutput *videoDataOutput;
 @property (nonatomic, strong) AVCaptureVideoPreviewLayer *previewLayer;
 @property (nonatomic, strong) NSTimer *recordingTimer;
 @property (nonatomic, strong) NSTimer *lockMonitorTimer;
+@property (nonatomic, strong) dispatch_queue_t videoDataOutputQueue;
+@property (nonatomic, strong) CD3DGSBlurMonitor *blurMonitor;
+@property (nonatomic, assign) NSInteger currentBlurState;
+@property (nonatomic, assign) NSUInteger blurAnalysisFrameCount;
 @property (nonatomic, strong, nullable) NSURL *currentVideoURL;
 
 @property (nonatomic, assign) int32_t targetFrameRate;
@@ -49,6 +55,7 @@ NSString * const CD3DGSCameraRecordingURLKey = @"CD3DGSCameraRecordingURLKey";
         _parametersLockSummary = @"参数已应用";
         [self loadSettings];
         [self loadRecordedVideos];
+        _blurAnalysisFrameCount = 0;
         [[NSNotificationCenter defaultCenter] addObserver:self
                                                  selector:@selector(settingsDidChange:)
                                                      name:@"CDCameraSettingsDidChange"
@@ -195,11 +202,23 @@ NSString * const CD3DGSCameraRecordingURLKey = @"CD3DGSCameraRecordingURLKey";
         [session addOutput:movieOutput];
     }
 
+    AVCaptureVideoDataOutput *videoDataOutput = [[AVCaptureVideoDataOutput alloc] init];
+    videoDataOutput.alwaysDiscardsLateVideoFrames = YES;
+    videoDataOutput.videoSettings = @{(NSString *)kCVPixelBufferPixelFormatTypeKey : @(kCVPixelFormatType_420YpCbCr8BiPlanarFullRange)};
+    self.videoDataOutputQueue = dispatch_queue_create("com.roomcapture.blur-output", DISPATCH_QUEUE_SERIAL);
+    [videoDataOutput setSampleBufferDelegate:self queue:self.videoDataOutputQueue];
+    if ([session canAddOutput:videoDataOutput]) {
+        [session addOutput:videoDataOutput];
+        self.videoDataOutput = videoDataOutput;
+    }
+
     [session commitConfiguration];
 
     self.videoDevice = device;
     [self configureDevice:device];
     self.videoOutput = movieOutput;
+    self.blurMonitor = [[CD3DGSBlurMonitor alloc] init];
+    self.currentBlurState = NSIntegerMin;
 
     AVCaptureVideoPreviewLayer *preview = [AVCaptureVideoPreviewLayer layerWithSession:session];
     preview.videoGravity = AVLayerVideoGravityResizeAspectFill;
@@ -411,6 +430,8 @@ NSString * const CD3DGSCameraRecordingURLKey = @"CD3DGSCameraRecordingURLKey";
         return;
     }
 
+    [self resetBlurAnalysis];
+
     NSURL *videosDir = [self getVideoDirectory];
     [[NSFileManager defaultManager] createDirectoryAtURL:videosDir
                               withIntermediateDirectories:YES
@@ -434,6 +455,12 @@ NSString * const CD3DGSCameraRecordingURLKey = @"CD3DGSCameraRecordingURLKey";
     }
     [self.videoOutput stopRecording];
     [self stopRecordingTimer];
+}
+
+- (void)resetBlurAnalysis {
+    [self.blurMonitor reset];
+    self.currentBlurState = NSIntegerMin;
+    self.blurAnalysisFrameCount = 0;
 }
 
 - (void)startRecordingTimer {
@@ -468,6 +495,40 @@ didFinishRecordingToOutputFileAtURL:(NSURL *)fileURL
                                                                 object:self
                                                               userInfo:@{ CD3DGSCameraRecordingURLKey: fileURL }];
         }
+    });
+}
+
+- (void)captureOutput:(AVCaptureOutput *)output
+didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
+       fromConnection:(AVCaptureConnection *)connection {
+    if (output != self.videoDataOutput) {
+        return;
+    }
+    if (![self.videoOutput isRecording]) {
+        return;
+    }
+
+    self.blurAnalysisFrameCount += 1;
+    if ((self.blurAnalysisFrameCount % 4) != 0) {
+        return;
+    }
+
+    CVPixelBufferRef pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer);
+    if (!pixelBuffer || !self.blurStatusHandler) {
+        return;
+    }
+
+    CGFloat variance = [CD3DGSBlurMonitor laplacianVarianceForPixelBuffer:pixelBuffer];
+    CD3DGSBlurState state = [self.blurMonitor updateWithLaplacianVariance:variance];
+    self.currentBlurState = state;
+
+    CD3DGSCameraBlurStatusHandler handler = self.blurStatusHandler;
+    if (!handler) {
+        return;
+    }
+
+    dispatch_async(dispatch_get_main_queue(), ^{
+        handler(state, (double)variance);
     });
 }
 

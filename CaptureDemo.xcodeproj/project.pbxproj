@@ -35,6 +35,8 @@
 		6A24D1634BA720ABB69C35A0 /* StereoCaptureRecordStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DDFAC7C71CD01D989C9ED5D /* StereoCaptureRecordStore.swift */; };
 		6B2D38B68135EB6D948BA675 /* CDMeshCameraViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = 9A68DC27A0463B2A4BFC1634 /* CDMeshCameraViewController.m */; };
 		6E80DAE65FA2A6D72F6FEAAA /* MeshReviewSceneBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E2A5FE56765810AF9D06E52 /* MeshReviewSceneBuilder.swift */; };
+		74D3EEF12FBC998900966A1B /* guide01.gif in Resources */ = {isa = PBXBuildFile; fileRef = 74D3EEF02FBC998900966A1B /* guide01.gif */; };
+		74D3EEF52FBCAA6C00966A1B /* guide02.gif in Resources */ = {isa = PBXBuildFile; fileRef = 74D3EEF42FBCAA6C00966A1B /* guide02.gif */; };
 		76512A0563618B3614B65ADB /* step003.gif in Resources */ = {isa = PBXBuildFile; fileRef = 2ABA6FF3A9FDE84B4DE88C0E /* step003.gif */; };
 		7ADD782B5DC44BC5E1AF9D58 /* DepthCoverageAccumulator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0AAE88B97D5213031E509854 /* DepthCoverageAccumulator.swift */; };
 		7B213CC30738A51E8535D759 /* CaptureReviewModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8396906A6BE840C35DB97072 /* CaptureReviewModels.swift */; };
@@ -137,6 +139,8 @@
 		6E2A5FE56765810AF9D06E52 /* MeshReviewSceneBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeshReviewSceneBuilder.swift; sourceTree = "<group>"; };
 		722E019B120619A3435F8446 /* CDStereoCameraViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = CDStereoCameraViewController.m; sourceTree = "<group>"; };
 		7274C6BDBB2D21CEFEC681F0 /* CD3DGSCaptureGuidanceStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CD3DGSCaptureGuidanceStateTests.swift; sourceTree = "<group>"; };
+		74D3EEF02FBC998900966A1B /* guide01.gif */ = {isa = PBXFileReference; lastKnownFileType = image.gif; path = guide01.gif; sourceTree = "<group>"; };
+		74D3EEF42FBCAA6C00966A1B /* guide02.gif */ = {isa = PBXFileReference; lastKnownFileType = image.gif; path = guide02.gif; sourceTree = "<group>"; };
 		7514B37A6EE331223D7AA398 /* MeshPreviewRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeshPreviewRenderer.swift; sourceTree = "<group>"; };
 		75521A157BA07D5AE777EC63 /* CDFeatureHomeViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = CDFeatureHomeViewController.m; sourceTree = "<group>"; };
 		779B8C9EDB69303B181931DD /* CDMeshCaptureHostViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CDMeshCaptureHostViewController.swift; sourceTree = "<group>"; };
@@ -217,6 +221,8 @@
 		1DDBB94CBD29599801726F8E /* Resources */ = {
 			isa = PBXGroup;
 			children = (
+				74D3EEF02FBC998900966A1B /* guide01.gif */,
+				74D3EEF42FBCAA6C00966A1B /* guide02.gif */,
 				97ED26E9DB0ADA554DD83D90 /* Assets.xcassets */,
 				3A770CB8C926D51743C66B6D /* living_room_bg.png */,
 				3B58EDADBF6EC8B09EF7098D /* step01.mp4 */,
@@ -585,11 +591,13 @@
 				2096F2FF5B946B9184C75A7C /* step001.gif in Resources */,
 				379DA25FA507DA3357E024CF /* step002.gif in Resources */,
 				76512A0563618B3614B65ADB /* step003.gif in Resources */,
+				74D3EEF52FBCAA6C00966A1B /* guide02.gif in Resources */,
 				9DA3651B729C71E96BA7D729 /* step004.gif in Resources */,
 				B83AD7C8C147F147AEAAD831 /* step01.mp4 in Resources */,
 				8F860CEE9419677F34F9FB69 /* step02.mp4 in Resources */,
 				4C202383514767A8B57DBC68 /* step03.mp4 in Resources */,
 				81D19761B47B3EE5F6F0A43C /* step04.mp4 in Resources */,
+				74D3EEF12FBC998900966A1B /* guide01.gif in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

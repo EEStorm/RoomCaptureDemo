@@ -23,6 +23,8 @@
 
 @property (nonatomic, strong) UIView *toastContainerView;
 @property (nonatomic, strong) UILabel *toastLabel;
+@property (nonatomic, strong) UIView *blurStatusContainerView;
+@property (nonatomic, strong) UILabel *blurStatusLabel;
 @property (nonatomic, strong) UIView *imuStatusToastContainerView;
 @property (nonatomic, strong) UILabel *imuStatusToastLabel;
 @property (nonatomic, strong) UILabel *captureStepLabel;
@@ -79,6 +81,7 @@
 @property (nonatomic, strong) UIImageView *stepGifImageView;
 @property (nonatomic, strong) NSCache<NSString *, UIImage *> *stepGifCache;
 @property (nonatomic, assign) NSInteger stepGifDisplayedIndex;
+@property (nonatomic, assign) BOOL stepGifCollapsed;
 @property (nonatomic, assign) CGFloat currentMovementSpeedMetersPerSecond;
 @property (nonatomic, assign) CGFloat movementVelocityX;
 @property (nonatomic, assign) CGFloat movementVelocityY;
@@ -98,8 +101,16 @@
     self.warningImpactFeedbackGenerator = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight];
     self.stepGifCache = [[NSCache alloc] init];
     self.stepGifDisplayedIndex = NSNotFound;
+    self.stepGifCollapsed = NO;
     [self setupUI];
     [self setupCamera];
+
+    __weak typeof(self) weakSelf = self;
+    [CD3DGSCameraService shared].blurStatusHandler = ^(NSInteger blurState, double blurVariance) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [weakSelf updateBlurStatusWithState:blurState variance:(CGFloat)blurVariance];
+        });
+    };
 
     [[NSNotificationCenter defaultCenter] addObserver:self
                                              selector:@selector(settingsDidChange)
@@ -112,6 +123,7 @@
 }
 
 - (void)dealloc {
+    [CD3DGSCameraService shared].blurStatusHandler = nil;
     [[NSNotificationCenter defaultCenter] removeObserver:self];
 }
 
@@ -143,16 +155,18 @@
     if (!bottomBar) {
         bottomBar = [self.view.subviews lastObject];
     }
+    CGFloat bottomBarHeight = 120.0;
     if (bottomBar) {
-        bottomBar.frame = CGRectMake(0, self.view.bounds.size.height - 180, screenWidth, 180);
+        bottomBar.frame = CGRectMake(0, self.view.bounds.size.height - bottomBarHeight, screenWidth, bottomBarHeight);
         if (self.recordButton) {
             CGFloat btnSize = 80;
             CGFloat btnX = (screenWidth - btnSize) / 2;
-            self.recordButton.frame = CGRectMake(btnX, 50, btnSize, btnSize);
+            CGFloat btnY = 10;
+            self.recordButton.frame = CGRectMake(btnX, btnY, btnSize, btnSize);
+            self.recordingDurationLabel.frame = CGRectMake((screenWidth - 120) / 2, btnY + btnSize + 4, 120, 22);
         }
-        self.recordingDurationLabel.frame = CGRectMake((screenWidth - 120) / 2, 134, 120, 22);
         CGFloat stepSize = 54;
-        CGFloat stepY = 50;
+        CGFloat stepY = 10;
         CGFloat previousCenterX = MAX(76, screenWidth * 0.20);
         CGFloat nextCenterX = MIN(screenWidth - 76, screenWidth * 0.80);
         self.previousStepButton.frame = CGRectMake(previousCenterX - stepSize / 2, stepY, stepSize, stepSize);
@@ -161,19 +175,40 @@
         self.nextStepLabel.frame = CGRectMake(nextCenterX - 36, stepY + 55, 72, 20);
     }
 
-    CGFloat stepGifSize = 112.0;
-    CGFloat stepGifX = 16.0;
-    CGFloat stepGifY = CGRectGetMinY(bottomBar.frame) - stepGifSize - 12.0;
-    self.stepGifContainerView.frame = CGRectMake(stepGifX,
-                                                 MAX(safeTop + 8.0, stepGifY),
-                                                 stepGifSize,
-                                                 stepGifSize);
-    self.stepGifImageView.frame = self.stepGifContainerView.bounds;
+    CGSize stepGifContentSize = self.stepGifImageView.image.size;
+    if (stepGifContentSize.width <= 0.0 || stepGifContentSize.height <= 0.0) {
+        stepGifContentSize = CGSizeMake(362.0, 543.0);
+    }
+    CGFloat stepGifInnerWidth = MIN(MAX(140.0, screenWidth * 0.28), 160.0);
+    CGFloat stepGifInnerHeight = stepGifInnerWidth * stepGifContentSize.height / stepGifContentSize.width;
+    CGFloat stepGifOuterWidth = stepGifInnerWidth + 10.0;
+    CGFloat stepGifOuterHeight = stepGifInnerHeight + 10.0;
+    CGFloat stepGifDisplayHeight = self.stepGifCollapsed ? 48.0 : stepGifOuterHeight;
+    CGFloat stepGifX = 12.0;
+    CGFloat stepGifY = CGRectGetMinY(bottomBar.frame) - stepGifDisplayHeight - 14.0;
+    if (self.stepGifCollapsed) {
+        CGFloat collapsedDiameter = 48.0;
+        self.stepGifContainerView.frame = CGRectMake(stepGifX,
+                                                     MAX(safeTop + 8.0, stepGifY),
+                                                     collapsedDiameter,
+                                                     collapsedDiameter);
+        self.stepGifContainerView.layer.cornerRadius = collapsedDiameter / 2.0;
+        self.stepGifImageView.frame = CGRectInset(self.stepGifContainerView.bounds, 5.0, 5.0);
+        self.stepGifImageView.contentMode = UIViewContentModeScaleAspectFill;
+    } else {
+        self.stepGifContainerView.frame = CGRectMake(stepGifX,
+                                                     MAX(safeTop + 8.0, stepGifY),
+                                                     stepGifOuterWidth,
+                                                     stepGifOuterHeight);
+        self.stepGifContainerView.layer.cornerRadius = 12.0;
+        self.stepGifImageView.frame = CGRectInset(self.stepGifContainerView.bounds, 5.0, 5.0);
+        self.stepGifImageView.contentMode = UIViewContentModeScaleAspectFit;
+    }
 
     CGFloat toastWidth = MIN(screenWidth - 48, 340);
     CGFloat toastHorizontalInset = 16;
     CGFloat toastVerticalInset = 12;
-    CGFloat recordButtonTopY = self.view.bounds.size.height - 180 + 50;
+    CGFloat recordButtonTopY = self.view.bounds.size.height - bottomBarHeight + 10.0;
     if (bottomBar && self.recordButton) {
         recordButtonTopY = CGRectGetMinY(bottomBar.frame) + CGRectGetMinY(self.recordButton.frame);
     }
@@ -187,6 +222,15 @@
     CGFloat toastY = recordButtonTopY - 16 - toastHeight;
     self.toastContainerView.frame = CGRectMake((screenWidth - toastWidth) / 2, toastY, toastWidth, toastHeight);
     self.toastLabel.frame = CGRectInset(self.toastContainerView.bounds, toastHorizontalInset, toastVerticalInset);
+
+    CGFloat blurStatusWidth = 162.0;
+    CGFloat blurStatusHeight = 32.0;
+    CGFloat blurStatusY = CGRectGetMaxY(self.topBar.frame) + 10.0;
+    self.blurStatusContainerView.frame = CGRectMake((screenWidth - blurStatusWidth) / 2.0,
+                                                    blurStatusY,
+                                                    blurStatusWidth,
+                                                    blurStatusHeight);
+    self.blurStatusLabel.frame = CGRectInset(self.blurStatusContainerView.bounds, 12.0, 5.0);
 
     self.guideVideoOverlayView.frame = self.view.bounds;
     CGFloat guideWidth = MIN(screenWidth - 48, 360);
@@ -290,6 +334,12 @@
 - (void)viewWillAppear:(BOOL)animated {
     [super viewWillAppear:animated];
     [self.navigationController setNavigationBarHidden:YES animated:animated];
+    __weak typeof(self) weakSelf = self;
+    [CD3DGSCameraService shared].blurStatusHandler = ^(NSInteger blurState, double blurVariance) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [weakSelf updateBlurStatusWithState:blurState variance:(CGFloat)blurVariance];
+        });
+    };
     [[CD3DGSCameraService shared] startSession];
     [self startUITimer];
 }
@@ -298,6 +348,7 @@
     [super viewWillDisappear:animated];
     [self.navigationController setNavigationBarHidden:NO animated:animated];
     [[CD3DGSCameraService shared] stopSession];
+    [CD3DGSCameraService shared].blurStatusHandler = nil;
     [self stopUITimer];
     [self cancelPreparationFlow];
 }
@@ -317,7 +368,7 @@
 
     self.imuReservedContainerView = [[UIView alloc] initWithFrame:self.view.bounds];
     self.imuReservedContainerView.backgroundColor = [UIColor clearColor];
-    self.imuReservedContainerView.userInteractionEnabled = NO;
+    self.imuReservedContainerView.userInteractionEnabled = YES;
     [self.view addSubview:self.imuReservedContainerView];
 
     self.topBar = [[UIView alloc] initWithFrame:CGRectMake(0, safeTop, screenWidth, 96)];
@@ -359,11 +410,13 @@
     self.captureStepLabel.minimumScaleFactor = 0.78;
     [self.topBar addSubview:self.captureStepLabel];
 
-    UIView *bottomBar = [[UIView alloc] initWithFrame:CGRectMake(0, self.view.bounds.size.height - 180, screenWidth, 180)];
+    CGFloat bottomBarHeight = 120.0;
+    UIView *bottomBar = [[UIView alloc] initWithFrame:CGRectMake(0, self.view.bounds.size.height - bottomBarHeight, screenWidth, bottomBarHeight)];
     bottomBar.tag = 200;
     [self.view addSubview:bottomBar];
 
     [self setupGuidanceOverlayWithScreenWidth:screenWidth safeTop:safeTop];
+    [self setupBlurStatusOverlay];
     [self setupPitchIMUOverlay];
     [self setupStepGifOverlay];
     CGFloat btnSize = 80;
@@ -591,6 +644,23 @@
     [self.imuStatusToastContainerView addSubview:self.imuStatusToastLabel];
 }
 
+- (void)setupBlurStatusOverlay {
+    self.blurStatusContainerView = [[UIView alloc] initWithFrame:CGRectZero];
+    self.blurStatusContainerView.backgroundColor = [[UIColor blackColor] colorWithAlphaComponent:0.44];
+    self.blurStatusContainerView.layer.cornerRadius = 14;
+    self.blurStatusContainerView.clipsToBounds = YES;
+    self.blurStatusContainerView.hidden = YES;
+    self.blurStatusContainerView.alpha = 0;
+    [self.imuReservedContainerView addSubview:self.blurStatusContainerView];
+
+    self.blurStatusLabel = [[UILabel alloc] initWithFrame:CGRectZero];
+    self.blurStatusLabel.text = @"画面清晰";
+    self.blurStatusLabel.textColor = [UIColor whiteColor];
+    self.blurStatusLabel.font = [UIFont systemFontOfSize:14 weight:UIFontWeightSemibold];
+    self.blurStatusLabel.textAlignment = NSTextAlignmentCenter;
+    [self.blurStatusContainerView addSubview:self.blurStatusLabel];
+}
+
 - (void)setupGuideVideoOverlay {
     self.guideVideoOverlayView = [[UIView alloc] initWithFrame:self.view.bounds];
     self.guideVideoOverlayView.backgroundColor = [[UIColor blackColor] colorWithAlphaComponent:0.68];
@@ -689,7 +759,9 @@
     self.stepGifContainerView.layer.borderColor = [[UIColor whiteColor] colorWithAlphaComponent:0.18].CGColor;
     self.stepGifContainerView.clipsToBounds = YES;
     self.stepGifContainerView.hidden = YES;
-    self.stepGifContainerView.userInteractionEnabled = NO;
+    self.stepGifContainerView.userInteractionEnabled = YES;
+    UITapGestureRecognizer *stepGifTap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(stepGifTapped)];
+    [self.stepGifContainerView addGestureRecognizer:stepGifTap];
     [self.imuReservedContainerView addSubview:self.stepGifContainerView];
 
     self.stepGifImageView = [[UIImageView alloc] initWithFrame:self.stepGifContainerView.bounds];
@@ -697,6 +769,7 @@
     self.stepGifImageView.contentMode = UIViewContentModeScaleAspectFit;
     self.stepGifImageView.clipsToBounds = YES;
     [self.stepGifContainerView addSubview:self.stepGifImageView];
+    [self.imuReservedContainerView bringSubviewToFront:self.stepGifContainerView];
 
     [self refreshStepGifOverlay];
 }
@@ -707,6 +780,7 @@
     if (!shouldShow) {
         return;
     }
+    [self.imuReservedContainerView bringSubviewToFront:self.stepGifContainerView];
 
     NSInteger stepIndex = self.guidanceState.currentStepIndex;
     if (self.stepGifDisplayedIndex == stepIndex && self.stepGifImageView.image) {
@@ -717,10 +791,28 @@
     UIImage *gifImage = [self animatedGIFImageNamed:resourceName];
     self.stepGifImageView.image = gifImage;
     self.stepGifDisplayedIndex = stepIndex;
+    self.stepGifCollapsed = NO;
+    [self.imuReservedContainerView bringSubviewToFront:self.stepGifContainerView];
+    [self.view setNeedsLayout];
+}
+
+- (void)stepGifTapped {
+    if (!self.stepGifContainerView.hidden) {
+        self.stepGifCollapsed = !self.stepGifCollapsed;
+        if (self.stepGifCollapsed) {
+            UIImage *staticImage = self.stepGifImageView.image.images.firstObject ?: self.stepGifImageView.image;
+            self.stepGifImageView.image = staticImage;
+        } else {
+            NSString *resourceName = [self stepGifResourceNameForIndex:self.guidanceState.currentStepIndex];
+            self.stepGifImageView.image = [self animatedGIFImageNamed:resourceName];
+        }
+        [self.imuReservedContainerView bringSubviewToFront:self.stepGifContainerView];
+        [self.view setNeedsLayout];
+    }
 }
 
 - (NSString *)stepGifResourceNameForIndex:(NSInteger)stepIndex {
-    return [NSString stringWithFormat:@"step%03ld", (long)stepIndex + 1];
+    return @"guide01";
 }
 
 - (UIImage *)animatedGIFImageNamed:(NSString *)name {
@@ -847,6 +939,35 @@
     CGFloat alpha = enabled ? 1.0 : 0.45;
     button.alpha = alpha;
     label.alpha = alpha;
+}
+
+- (void)updateBlurStatusWithState:(NSInteger)blurState variance:(CGFloat)variance {
+    if (![[CD3DGSCameraService shared] isRecording] || self.isPreparingToRecord || self.isFinishingCurrentRecording) {
+        self.blurStatusContainerView.hidden = YES;
+        self.blurStatusContainerView.alpha = 0;
+        return;
+    }
+
+    CD3DGSBlurState state = (CD3DGSBlurState)blurState;
+    NSString *text = [CD3DGSBlurMonitor statusTextForState:state];
+    NSString *statusText = [NSString stringWithFormat:@"%@ %.1f", text, variance];
+    UIColor *accentColor = [UIColor whiteColor];
+    UIColor *tintColor = [[UIColor whiteColor] colorWithAlphaComponent:0.14];
+    if (state == CD3DGSBlurStateSoft) {
+        accentColor = [UIColor colorWithRed:0.98 green:0.72 blue:0.16 alpha:1.0];
+        tintColor = [accentColor colorWithAlphaComponent:0.18];
+    } else if (state == CD3DGSBlurStateBlurry) {
+        accentColor = [UIColor colorWithRed:0.98 green:0.17 blue:0.12 alpha:1.0];
+        tintColor = [accentColor colorWithAlphaComponent:0.22];
+    }
+
+    self.blurStatusContainerView.hidden = NO;
+    self.blurStatusContainerView.alpha = 1.0;
+    self.blurStatusContainerView.layer.borderWidth = 1.0;
+    self.blurStatusContainerView.layer.borderColor = accentColor.CGColor;
+    self.blurStatusContainerView.backgroundColor = [tintColor colorWithAlphaComponent:0.30];
+    self.blurStatusLabel.text = statusText;
+    self.blurStatusLabel.textColor = accentColor;
 }
 
 - (void)setupCamera {
@@ -1013,6 +1134,8 @@
     self.imuAngularSpeedLabel.hidden = YES;
     self.imuMovementSpeedLabel.hidden = YES;
     self.imuRollAngleLabel.hidden = YES;
+    self.blurStatusContainerView.hidden = YES;
+    self.blurStatusContainerView.alpha = 0;
     self.imuTopLimitLineView.backgroundColor = [[UIColor whiteColor] colorWithAlphaComponent:0.88];
     self.imuBottomLimitLineView.backgroundColor = [[UIColor whiteColor] colorWithAlphaComponent:0.88];
     self.imuCrossView.transform = CGAffineTransformIdentity;
@@ -1388,6 +1511,7 @@
     [[CD3DGSCameraService shared] startRecording];
     [self startPitchMonitoringIfNeeded];
     [self updateGuidanceUI];
+    self.stepGifCollapsed = NO;
 }
 
 - (void)cancelPreparationFlow {
@@ -1420,6 +1544,7 @@
     self.isFinishingCurrentRecording = NO;
     self.recordingDurationLabel.hidden = YES;
     [self stopPitchMonitoring];
+    self.stepGifCollapsed = NO;
     [self updateGuidanceUI];
 
     if (self.guidanceState.isComplete) {

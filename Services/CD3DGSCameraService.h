@@ -4,6 +4,7 @@
 NS_ASSUME_NONNULL_BEGIN
 
 typedef void(^CD3DGSCameraPermissionResult)(BOOL granted, NSError * _Nullable error);
+typedef void(^CD3DGSCameraBlurStatusHandler)(NSInteger blurState, double blurVariance);
 FOUNDATION_EXPORT NSString * const CD3DGSCameraDidFinishRecordingNotification;
 FOUNDATION_EXPORT NSString * const CD3DGSCameraRecordingURLKey;
 
@@ -14,6 +15,7 @@ FOUNDATION_EXPORT NSString * const CD3DGSCameraRecordingURLKey;
 @property (nonatomic, readonly) NSArray<NSURL *> *recordedVideos;
 @property (nonatomic, readonly) BOOL parametersLocked;
 @property (nonatomic, copy, readonly) NSString *parametersLockSummary;
+@property (nonatomic, copy, nullable) CD3DGSCameraBlurStatusHandler blurStatusHandler;
 
 + (instancetype)shared;
 
