@@ -17,3 +17,5 @@ DerivedData/
 Logs/
 
 .worktrees/
+
+.superpowers/
