@@ -4,7 +4,8 @@
 NS_ASSUME_NONNULL_BEGIN
 
 typedef void(^CD3DGSCameraPermissionResult)(BOOL granted, NSError * _Nullable error);
-typedef void(^CD3DGSSampleBufferHandler)(CMSampleBufferRef sampleBuffer);
+FOUNDATION_EXPORT NSString * const CD3DGSCameraDidFinishRecordingNotification;
+FOUNDATION_EXPORT NSString * const CD3DGSCameraRecordingURLKey;
 
 @interface CD3DGSCameraService : NSObject
 
@@ -24,9 +25,6 @@ typedef void(^CD3DGSSampleBufferHandler)(CMSampleBufferRef sampleBuffer);
 - (void)stopRecording;
 - (void)deleteVideoAtURL:(NSURL *)url;
 - (void)deleteAllVideos;
-
-/// Preview-frame callback for analysis. Called on an internal serial queue; may be throttled.
-- (void)setSampleBufferHandler:(CD3DGSSampleBufferHandler _Nullable)handler;
 
 @end
 

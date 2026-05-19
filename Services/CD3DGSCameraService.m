@@ -4,13 +4,14 @@
 static NSString * const kCD3DGSCameraDidReloadNotification = @"CD3DGSCameraDidReload";
 static NSString * const kCD3DGSCameraExposureDidAutoLockNotification = @"CD3DGSCameraExposureDidAutoLock";
 static NSString * const kCD3DGSCameraParametersLockDidChangeNotification = @"CD3DGSCameraParametersLockDidChange";
+NSString * const CD3DGSCameraDidFinishRecordingNotification = @"CD3DGSCameraDidFinishRecordingNotification";
+NSString * const CD3DGSCameraRecordingURLKey = @"CD3DGSCameraRecordingURLKey";
 
-@interface CD3DGSCameraService () <AVCaptureFileOutputRecordingDelegate, AVCaptureVideoDataOutputSampleBufferDelegate>
+@interface CD3DGSCameraService () <AVCaptureFileOutputRecordingDelegate>
 
 @property (nonatomic, strong) AVCaptureSession *captureSession;
 @property (nonatomic, strong) AVCaptureDevice *videoDevice;
 @property (nonatomic, strong) AVCaptureMovieFileOutput *videoOutput;
-@property (nonatomic, strong) AVCaptureVideoDataOutput *videoDataOutput;
 @property (nonatomic, strong) AVCaptureVideoPreviewLayer *previewLayer;
 @property (nonatomic, strong) NSTimer *recordingTimer;
 @property (nonatomic, strong) NSTimer *lockMonitorTimer;
@@ -24,10 +25,6 @@ static NSString * const kCD3DGSCameraParametersLockDidChangeNotification = @"CD3
 @property (nonatomic, assign) NSTimeInterval autoLockSettleSeconds;
 @property (nonatomic, assign) NSInteger currentCameraLens;
 @property (nonatomic, assign) NSUInteger exposureAutoLockGeneration;
-
-@property (nonatomic, copy, nullable) CD3DGSSampleBufferHandler sampleBufferHandlerBlock;
-@property (nonatomic, strong) dispatch_queue_t sampleBufferQueue;
-@property (nonatomic, assign) NSUInteger sampleBufferFrameCounter;
 
 @property (nonatomic, assign) BOOL parametersLocked;
 @property (nonatomic, copy) NSString *parametersLockSummary;
@@ -48,7 +45,6 @@ static NSString * const kCD3DGSCameraParametersLockDidChangeNotification = @"CD3
 - (instancetype)init {
     self = [super init];
     if (self) {
-        _sampleBufferQueue = dispatch_queue_create("com.captureDemo.3dgs.sampleBufferQueue", DISPATCH_QUEUE_SERIAL);
         _parametersLocked = YES;
         _parametersLockSummary = @"参数已应用";
         [self loadSettings];
@@ -64,13 +60,6 @@ static NSString * const kCD3DGSCameraParametersLockDidChangeNotification = @"CD3
 - (void)dealloc {
     [[NSNotificationCenter defaultCenter] removeObserver:self];
     [self.lockMonitorTimer invalidate];
-}
-
-- (void)setSampleBufferHandler:(CD3DGSSampleBufferHandler)handler {
-    @synchronized (self) {
-        self.sampleBufferHandlerBlock = [handler copy];
-        self.sampleBufferFrameCounter = 0;
-    }
 }
 
 - (void)checkCameraPermissionWithResult:(CD3DGSCameraPermissionResult)result {
@@ -206,20 +195,11 @@ static NSString * const kCD3DGSCameraParametersLockDidChangeNotification = @"CD3
         [session addOutput:movieOutput];
     }
 
-    AVCaptureVideoDataOutput *dataOutput = [[AVCaptureVideoDataOutput alloc] init];
-    dataOutput.alwaysDiscardsLateVideoFrames = YES;
-    dataOutput.videoSettings = @{ (id)kCVPixelBufferPixelFormatTypeKey: @(kCVPixelFormatType_420YpCbCr8BiPlanarFullRange) };
-    if ([session canAddOutput:dataOutput]) {
-        [session addOutput:dataOutput];
-    }
-    [dataOutput setSampleBufferDelegate:self queue:self.sampleBufferQueue];
-
     [session commitConfiguration];
 
     self.videoDevice = device;
     [self configureDevice:device];
     self.videoOutput = movieOutput;
-    self.videoDataOutput = dataOutput;
 
     AVCaptureVideoPreviewLayer *preview = [AVCaptureVideoPreviewLayer layerWithSession:session];
     preview.videoGravity = AVLayerVideoGravityResizeAspectFill;
@@ -483,27 +463,12 @@ didFinishRecordingToOutputFileAtURL:(NSURL *)fileURL
         } else {
             NSLog(@"3DGS recording saved: %@", fileURL);
             [self loadRecordedVideos];
+            self.currentVideoURL = nil;
+            [[NSNotificationCenter defaultCenter] postNotificationName:CD3DGSCameraDidFinishRecordingNotification
+                                                                object:self
+                                                              userInfo:@{ CD3DGSCameraRecordingURLKey: fileURL }];
         }
     });
-}
-
-- (void)captureOutput:(AVCaptureOutput *)output
-didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
-       fromConnection:(AVCaptureConnection *)connection {
-    CD3DGSSampleBufferHandler handler = nil;
-    NSUInteger counter = 0;
-    @synchronized (self) {
-        handler = self.sampleBufferHandlerBlock;
-        if (!handler) return;
-        self.sampleBufferFrameCounter += 1;
-        counter = self.sampleBufferFrameCounter;
-    }
-
-    // Throttle: process every 4 frames (lower sensitivity / CPU).
-    if (counter % 4 != 0) {
-        return;
-    }
-    handler(sampleBuffer);
 }
 
 - (void)startLockMonitorIfNeeded {

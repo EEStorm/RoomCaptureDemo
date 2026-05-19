@@ -5,7 +5,7 @@
 #import "CDPendingTabViewController.h"
 #import "CDStereoCameraViewController.h"
 #import "CD3DGSCaptureViewController.h"
-#import "CDVideoConfirmViewController.h"
+//#import "CDVideoConfirmViewController.h"
 
 @implementation CDMainTabBarController
 
@@ -31,7 +31,8 @@
                                       image:@"house.fill"
                                 buttonTitle:@"进入流程演示"
                          destinationBuilder:^UIViewController *{
-                             return [[CDVideoConfirmViewController alloc] init];
+//                             return [[CDVideoConfirmViewController alloc] init];
+            return   [[CDMeshCameraViewController alloc] init];
                          }],
         [self navigationControllerWithTitle:@"待定"
                                       image:@"ellipsis.circle"
