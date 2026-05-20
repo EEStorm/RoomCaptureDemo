@@ -243,7 +243,7 @@
     self.guideVideoFrameView.frame = CGRectMake((screenWidth - guideWidth) / 2.0, guideY, guideWidth, guideHeight);
     self.guideVideoPlayerLayer.frame = CGRectInset(self.guideVideoFrameView.bounds, 4, 4);
     self.guideVideoTitleLabel.frame = CGRectMake(20, CGRectGetMinY(self.guideVideoFrameView.frame) - 72, screenWidth - 40, 56);
-    self.guideVideoSkipButton.frame = CGRectMake(CGRectGetMaxX(self.guideVideoFrameView.frame) - 64, CGRectGetMinY(self.guideVideoFrameView.frame) - 44, 64, 32);
+    self.guideVideoSkipButton.frame = CGRectMake(CGRectGetMaxX(self.guideVideoFrameView.frame) - 88, CGRectGetMinY(self.guideVideoFrameView.frame) - 52, 88, 44);
     self.countdownLabel.frame = self.guideVideoOverlayView.bounds;
 
     CGFloat sideWidth = 84.0;
@@ -332,7 +332,9 @@
                                                              warningHeight);
     self.imuRollWarningLabel.frame = CGRectInset(self.imuRollWarningLabelContainerView.bounds, 14, 6);
 
-    [self.view bringSubviewToFront:self.guideVideoOverlayView];
+    if (!self.guideVideoOverlayView.hidden) {
+        [self.view bringSubviewToFront:self.guideVideoOverlayView];
+    }
 }
 
 - (void)viewWillAppear:(BOOL)animated {
@@ -670,6 +672,7 @@
     self.guideVideoOverlayView.backgroundColor = [[UIColor blackColor] colorWithAlphaComponent:0.68];
     self.guideVideoOverlayView.hidden = YES;
     self.guideVideoOverlayView.alpha = 0;
+    self.guideVideoOverlayView.userInteractionEnabled = YES;
     [self.view addSubview:self.guideVideoOverlayView];
 
     self.guideVideoFrameView = [[UIView alloc] initWithFrame:CGRectZero];
@@ -701,6 +704,7 @@
     self.countdownLabel.font = [UIFont monospacedDigitSystemFontOfSize:96 weight:UIFontWeightBold];
     self.countdownLabel.textAlignment = NSTextAlignmentCenter;
     self.countdownLabel.hidden = YES;
+    self.countdownLabel.userInteractionEnabled = NO;
     [self.guideVideoOverlayView addSubview:self.countdownLabel];
 }
 
@@ -988,21 +992,28 @@
 }
 
 - (void)setupCamera {
-    dispatch_async(dispatch_get_main_queue(), ^{
+    __weak typeof(self) weakSelf = self;
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
         AVCaptureVideoPreviewLayer *preview = [[CD3DGSCameraService shared] setupCamera];
-        if (!preview) {
-            [self showAlert:@"相机错误" message:@"无法初始化相机"];
-            return;
-        }
+        dispatch_async(dispatch_get_main_queue(), ^{
+            __strong typeof(weakSelf) self = weakSelf;
+            if (!self) {
+                return;
+            }
+            if (!preview) {
+                [self showAlert:@"相机错误" message:@"无法初始化相机"];
+                return;
+            }
 
-        self.previewLayer = preview;
-        preview.frame = self.view.bounds;
+            self.previewLayer = preview;
+            preview.frame = self.view.bounds;
 
-        UIView *container = [self.view viewWithTag:100];
-        [container.layer addSublayer:preview];
+            UIView *container = [self.view viewWithTag:100];
+            [container.layer addSublayer:preview];
 
-        [[CD3DGSCameraService shared] startSession];
-        [self updateSettingsLabels];
+            [[CD3DGSCameraService shared] startSession];
+            [self updateSettingsLabels];
+        });
     });
 }
 
@@ -1489,6 +1500,8 @@
     self.countdownLabel.hidden = YES;
     self.guideVideoOverlayView.hidden = NO;
     self.guideVideoOverlayView.alpha = 1;
+    [self.view bringSubviewToFront:self.guideVideoOverlayView];
+    [self.guideVideoOverlayView bringSubviewToFront:self.guideVideoSkipButton];
 
     AVPlayerItem *item = [AVPlayerItem playerItemWithURL:guideVideoURL];
     [[NSNotificationCenter defaultCenter] addObserver:self
@@ -1541,6 +1554,8 @@
     self.countdownLabel.hidden = NO;
     self.countdownValue = 3;
     self.countdownLabel.text = @"3";
+    [self.view bringSubviewToFront:self.guideVideoOverlayView];
+    [self.guideVideoOverlayView bringSubviewToFront:self.countdownLabel];
 
     [self.countdownTimer invalidate];
     self.countdownTimer = [NSTimer scheduledTimerWithTimeInterval:1.0
