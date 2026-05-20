@@ -15,12 +15,7 @@
 
 - (void)viewDidLoad {
     [super viewDidLoad];
-    NSArray<CDFeatureHomeEntry *> *roomShootEntries = [self roomShootDemoEntries];
-    CDFeatureHomeViewController *roomShootHomeViewController = [[CDFeatureHomeViewController alloc] initWithTitle:@"房间采集Demo"
-                                                                                                           entries:roomShootEntries];
-    UINavigationController *roomShootNavigationController = [[UINavigationController alloc] initWithRootViewController:roomShootHomeViewController];
-    roomShootNavigationController.tabBarItem.title = @"房间采集Demo";
-    roomShootNavigationController.tabBarItem.image = [UIImage systemImageNamed:@"house.fill"];
+    UINavigationController *roomShootNavigationController = [self.class roomShootDemoNavigationController];
 
     self.viewControllers = @[
         [self navigationControllerWithTitle:@"参数相机"
@@ -69,7 +64,21 @@
     return navigationController;
 }
 
-- (NSArray<CDFeatureHomeEntry *> *)roomShootDemoEntries {
++ (UIViewController *)roomShootDemoHomeViewController {
+    NSArray<CDFeatureHomeEntry *> *roomShootEntries = [self roomShootDemoEntries];
+    return [[CDFeatureHomeViewController alloc] initWithTitle:@"房间采集Demo"
+                                                      entries:roomShootEntries];
+}
+
++ (UINavigationController *)roomShootDemoNavigationController {
+    UIViewController *homeViewController = [self roomShootDemoHomeViewController];
+    UINavigationController *navigationController = [[UINavigationController alloc] initWithRootViewController:homeViewController];
+    navigationController.tabBarItem.title = @"房间采集Demo";
+    navigationController.tabBarItem.image = [UIImage systemImageNamed:@"house.fill"];
+    return navigationController;
+}
+
++ (NSArray<CDFeatureHomeEntry *> *)roomShootDemoEntries {
     CDFeatureHomeEntry *entry1 = [CDFeatureHomeEntry entryWithTitle:@"单分间完整拍摄演示"
                                                            subtitle:@"进入四步房间采集流程"
                                                               style:CDFeatureHomeEntryStyleBrand
