@@ -5,6 +5,7 @@
 #import "CDCameraSettingsViewController.h"
 #import "../RoomShootFlow/CDRoomItem.h"
 #import "../RoomShootFlow/CDRoomVideoReviewViewController.h"
+#import "CDVideoStorageManager.h"
 #import <AVFoundation/AVFoundation.h>
 #import <CoreMotion/CoreMotion.h>
 #import <ImageIO/ImageIO.h>
@@ -36,6 +37,9 @@
 @property (nonatomic, strong) CD3DGSCaptureGuidanceState *guidanceState;
 @property (nonatomic, assign) BOOL isFinishingCurrentRecording;
 @property (nonatomic, assign) BOOL isPreparingToRecord;
+@property (nonatomic, assign) BOOL isStartingRecording;
+@property (nonatomic, assign) BOOL isRecordingFlowActive;
+@property (nonatomic, strong) NSDate *recordingOverlaySuppressedUntil;
 @property (nonatomic, strong) UIView *guideVideoOverlayView;
 @property (nonatomic, strong) UIView *guideVideoFrameView;
 @property (nonatomic, strong) UILabel *guideVideoTitleLabel;
@@ -918,11 +922,12 @@
 }
 
 - (void)updateGuidanceUI {
-    BOOL isBusy = [[CD3DGSCameraService shared] isRecording] || self.isFinishingCurrentRecording || self.isPreparingToRecord;
+    BOOL isBusy = [[CD3DGSCameraService shared] isRecording] || self.isFinishingCurrentRecording || self.isPreparingToRecord || self.isStartingRecording;
     self.captureStepLabel.text = self.guidanceState.currentInstruction;
     BOOL isRecording = [[CD3DGSCameraService shared] isRecording];
-    NSString *warningText = isRecording ? [self currentWarningToastText] : nil;
-    BOOL shouldShowLongToast = !isRecording && !self.isPreparingToRecord;
+    BOOL suppressRecordingOverlay = [self shouldSuppressRecordingOverlay];
+    NSString *warningText = (isRecording && !suppressRecordingOverlay) ? [self currentWarningToastText] : nil;
+    BOOL shouldShowLongToast = !self.isRecordingFlowActive && !suppressRecordingOverlay;
     self.toastContainerView.hidden = !shouldShowLongToast;
     self.toastLabel.text = self.guidanceState.currentToastText;
     self.imuStatusToastContainerView.hidden = !(isRecording && warningText.length > 0);
@@ -931,8 +936,19 @@
     [self.view setNeedsLayout];
     [self updateStepButton:self.previousStepButton label:self.previousStepLabel enabled:self.guidanceState.canMoveToPreviousStep && !isBusy];
     [self updateStepButton:self.nextStepButton label:self.nextStepLabel enabled:self.guidanceState.canMoveToNextStep && !isBusy];
-    self.recordButton.enabled = !self.guidanceState.isComplete && !self.isFinishingCurrentRecording && !self.isPreparingToRecord;
+    self.recordButton.enabled = !self.guidanceState.isComplete && !self.isFinishingCurrentRecording && !self.isPreparingToRecord && !self.isStartingRecording;
     self.recordButton.alpha = self.recordButton.enabled ? 1.0 : 0.45;
+}
+
+- (BOOL)shouldSuppressRecordingOverlay {
+    if (!self.recordingOverlaySuppressedUntil) {
+        return NO;
+    }
+    if ([self.recordingOverlaySuppressedUntil timeIntervalSinceNow] > 0) {
+        return YES;
+    }
+    self.recordingOverlaySuppressedUntil = nil;
+    return NO;
 }
 
 - (void)updateStepButton:(UIButton *)button label:(UILabel *)label enabled:(BOOL)enabled {
@@ -1011,11 +1027,19 @@
 
 - (void)updateUI {
     BOOL isRecording = [[CD3DGSCameraService shared] isRecording];
+    if (isRecording && self.isStartingRecording) {
+        self.isStartingRecording = NO;
+    }
     [self updateRecordButton:isRecording];
     if (isRecording) {
         self.recordingDurationLabel.hidden = NO;
         self.recordingDurationLabel.text = [self formatDuration:[CD3DGSCameraService shared].recordingDuration];
         [self startPitchMonitoringIfNeeded];
+    } else if (self.isPreparingToRecord) {
+        self.recordingDurationLabel.hidden = YES;
+        [self startPitchMonitoringIfNeeded];
+    } else if (self.isStartingRecording || [self shouldSuppressRecordingOverlay]) {
+        self.recordingDurationLabel.hidden = NO;
     } else {
         self.recordingDurationLabel.hidden = YES;
         [self stopPitchMonitoring];
@@ -1038,10 +1062,11 @@
         return;
     }
 
-    self.imuTopLimitLineView.hidden = NO;
-    self.imuBottomLimitLineView.hidden = NO;
+    BOOL pitchValidationEnabled = [self isPitchValidationEnabledForCurrentStep];
+    self.imuTopLimitLineView.hidden = !pitchValidationEnabled;
+    self.imuBottomLimitLineView.hidden = !pitchValidationEnabled;
     self.imuCrossView.hidden = NO;
-    self.imuPitchAngleLabel.hidden = NO;
+    self.imuPitchAngleLabel.hidden = !pitchValidationEnabled;
     self.imuRollAngleLabel.hidden = NO;
     self.imuWarningLabelContainerView.hidden = YES;
     self.imuLeftWarningView.hidden = YES;
@@ -1084,10 +1109,47 @@
         dispatch_async(dispatch_get_main_queue(), ^{
             [self updateAngularSpeedDegreesPerSecond:angularSpeed];
             [self updateMovementSpeedMetersPerSecond:movementSpeed];
-            [self updatePitchIMUUIWithPitchDegrees:pitchDegrees];
+            if ([self isPitchValidationEnabledForCurrentStep]) {
+                [self updatePitchIMUUIWithPitchDegrees:pitchDegrees];
+            } else {
+                [self disablePitchValidationUI];
+            }
             [self updateRollIMUUIWithRollDegrees:rollDegrees];
         });
     }];
+}
+
+- (BOOL)isPitchValidationEnabledForCurrentStep {
+    return self.guidanceState.currentStepIndex < 2;
+}
+
+- (BOOL)shouldUpdateMotionGuidance {
+    return [[CD3DGSCameraService shared] isRecording] || self.isPreparingToRecord || self.isStartingRecording;
+}
+
+- (BOOL)shouldTriggerMotionWarningFeedback {
+    return [[CD3DGSCameraService shared] isRecording] && ![self shouldSuppressRecordingOverlay];
+}
+
+- (void)disablePitchValidationUI {
+    self.currentPitchDegrees = 0;
+    self.currentPitchOffsetY = 0;
+    self.pitchWarningActive = NO;
+    self.imuTopLimitLineView.hidden = YES;
+    self.imuBottomLimitLineView.hidden = YES;
+    self.imuPitchAngleLabel.hidden = YES;
+    self.imuWarningLabelContainerView.hidden = YES;
+    self.imuWarningLabelContainerView.alpha = 0;
+    self.imuLeftWarningView.hidden = YES;
+    self.imuRightWarningView.hidden = YES;
+    self.imuLeftWarningView.alpha = 0;
+    self.imuRightWarningView.alpha = 0;
+    self.imuTopLimitLineView.backgroundColor = [[UIColor whiteColor] colorWithAlphaComponent:0.88];
+    self.imuBottomLimitLineView.backgroundColor = [[UIColor whiteColor] colorWithAlphaComponent:0.88];
+    self.imuPitchAngleLabel.textColor = [UIColor whiteColor];
+    [self refreshIMUWarningChrome];
+    [self updateGuidanceUI];
+    [self.view setNeedsLayout];
 }
 
 - (double)screenPitchDegreesForMotion:(CMDeviceMotion *)motion {
@@ -1171,14 +1233,14 @@
 }
 
 - (void)updateAngularSpeedDegreesPerSecond:(CGFloat)speed {
-    if (![[CD3DGSCameraService shared] isRecording]) {
+    if (![self shouldUpdateMotionGuidance]) {
         return;
     }
 
     CGFloat smoothedSpeed = self.currentAngularSpeedDegreesPerSecond * 0.80 + speed * 0.20;
     self.currentAngularSpeedDegreesPerSecond = MIN(MAX(smoothedSpeed, 0.0), 360.0);
     BOOL warningActive = self.currentAngularSpeedDegreesPerSecond >= 45.0;
-    BOOL shouldTriggerHaptic = (!self.angularSpeedWarningActive && warningActive);
+    BOOL shouldTriggerHaptic = (!self.angularSpeedWarningActive && warningActive && [self shouldTriggerMotionWarningFeedback]);
     self.angularSpeedWarningActive = warningActive;
     self.imuAngularSpeedLabel.hidden = NO;
     self.imuAngularSpeedLabel.text = [NSString stringWithFormat:@"角速度 %.0f°/s", self.currentAngularSpeedDegreesPerSecond];
@@ -1193,13 +1255,13 @@
 }
 
 - (void)updateMovementSpeedMetersPerSecond:(CGFloat)speed {
-    if (![[CD3DGSCameraService shared] isRecording]) {
+    if (![self shouldUpdateMotionGuidance]) {
         return;
     }
 
     self.currentMovementSpeedMetersPerSecond = MIN(MAX(speed, 0.0), 2.5);
     BOOL warningActive = self.currentMovementSpeedMetersPerSecond >= 0.5;
-    BOOL shouldTriggerHaptic = (!self.movementWarningActive && warningActive);
+    BOOL shouldTriggerHaptic = (!self.movementWarningActive && warningActive && [self shouldTriggerMotionWarningFeedback]);
     self.movementWarningActive = warningActive;
     self.imuMovementSpeedLabel.hidden = NO;
     self.imuMovementSpeedLabel.text = warningActive ? [NSString stringWithFormat:@"移动过快 %.1fm/s", self.currentMovementSpeedMetersPerSecond]
@@ -1213,7 +1275,7 @@
 }
 
 - (void)updatePitchIMUUIWithPitchDegrees:(double)pitchDegrees {
-    if (![[CD3DGSCameraService shared] isRecording]) {
+    if (![self shouldUpdateMotionGuidance]) {
         [self stopPitchMonitoring];
         return;
     }
@@ -1243,7 +1305,7 @@
 }
 
 - (void)updateRollIMUUIWithRollDegrees:(double)rollDegrees {
-    if (![[CD3DGSCameraService shared] isRecording]) {
+    if (![self shouldUpdateMotionGuidance]) {
         [self stopPitchMonitoring];
         return;
     }
@@ -1277,7 +1339,7 @@
 }
 
 - (void)applyPitchWarningActive:(BOOL)warningActive animated:(BOOL)animated {
-    BOOL shouldTriggerHaptic = (!self.pitchWarningActive && warningActive);
+    BOOL shouldTriggerHaptic = (!self.pitchWarningActive && warningActive && [self shouldTriggerMotionWarningFeedback]);
     if (self.pitchWarningActive == warningActive && self.imuLeftWarningView.hidden == !warningActive) {
         return;
     }
@@ -1306,7 +1368,7 @@
 }
 
 - (void)applyRollWarningActive:(BOOL)warningActive animated:(BOOL)animated {
-    BOOL shouldTriggerHaptic = (!self.rollWarningActive && warningActive);
+    BOOL shouldTriggerHaptic = (!self.rollWarningActive && warningActive && [self shouldTriggerMotionWarningFeedback]);
     if (self.rollWarningActive == warningActive && self.imuTopWarningView.hidden == !warningActive) {
         return;
     }
@@ -1397,6 +1459,7 @@
     CD3DGSCameraService *cameraService = [CD3DGSCameraService shared];
     if (cameraService.isRecording) {
         self.isFinishingCurrentRecording = YES;
+        self.isRecordingFlowActive = YES;
         self.recordButton.enabled = NO;
         [self stopPitchMonitoring];
         [cameraService stopRecording];
@@ -1410,6 +1473,7 @@
 
 - (void)beginGuideVideoBeforeRecording {
     self.isPreparingToRecord = YES;
+    self.isRecordingFlowActive = YES;
     self.recordingDurationLabel.hidden = YES;
     [self updateGuidanceUI];
 
@@ -1468,6 +1532,7 @@
 }
 
 - (void)startCountdownBeforeRecording {
+    [self startPitchMonitoringIfNeeded];
     self.guideVideoOverlayView.hidden = NO;
     self.guideVideoOverlayView.alpha = 1;
     self.guideVideoFrameView.hidden = YES;
@@ -1505,11 +1570,18 @@
     self.guideVideoOverlayView.hidden = YES;
     self.guideVideoSkipButton.hidden = YES;
     self.countdownLabel.hidden = YES;
-    self.isPreparingToRecord = NO;
+    self.isStartingRecording = YES;
+    self.recordingOverlaySuppressedUntil = [NSDate dateWithTimeIntervalSinceNow:0.45];
+    self.toastContainerView.hidden = YES;
+    self.imuStatusToastContainerView.hidden = YES;
 
     self.recordingDurationLabel.text = @"00:00.0";
     self.recordingDurationLabel.hidden = NO;
     [[CD3DGSCameraService shared] startRecording];
+    if ([[CD3DGSCameraService shared] isRecording]) {
+        self.isStartingRecording = NO;
+    }
+    self.isPreparingToRecord = NO;
     [self startPitchMonitoringIfNeeded];
     [self updateGuidanceUI];
     self.stepGifCollapsed = NO;
@@ -1528,20 +1600,45 @@
     self.guideVideoOverlayView.hidden = YES;
     self.guideVideoSkipButton.hidden = YES;
     self.countdownLabel.hidden = YES;
+    self.isStartingRecording = NO;
+    self.recordingOverlaySuppressedUntil = nil;
     self.isPreparingToRecord = NO;
+    self.isRecordingFlowActive = NO;
     [self stopPitchMonitoring];
 }
 
 - (void)recordingDidFinish:(NSNotification *)notification {
     NSURL *videoURL = notification.userInfo[CD3DGSCameraRecordingURLKey];
     if (!videoURL) {
+        self.isRecordingFlowActive = NO;
         self.isFinishingCurrentRecording = NO;
         self.recordButton.enabled = YES;
         [self updateGuidanceUI];
         return;
     }
 
+    NSString *roomName = @"分间采集";
+
+    // 保存视频到 Documents 持久化目录（供领导事后查看）
+    [[CDVideoStorageManager shared] saveVideoToDocuments:videoURL roomName:roomName completion:^(NSURL * _Nullable savedURL, NSError * _Nullable error) {
+        if (savedURL) {
+            NSLog(@"视频已保存到Documents: %@", savedURL.path);
+        } else {
+            NSLog(@"视频保存到Documents失败: %@", error.localizedDescription);
+        }
+    }];
+
+    // 保存视频到相册（用户可直接在相册中查看）
+    [[CDVideoStorageManager shared] saveVideoToPhotoLibrary:videoURL completion:^(BOOL success, NSError * _Nullable error) {
+        if (success) {
+            NSLog(@"视频已保存到相册");
+        } else {
+            NSLog(@"视频保存到相册失败: %@", error.localizedDescription);
+        }
+    }];
+
     [self.guidanceState completeCurrentStepWithVideoURL:videoURL];
+    self.isRecordingFlowActive = NO;
     self.isFinishingCurrentRecording = NO;
     self.recordingDurationLabel.hidden = YES;
     [self stopPitchMonitoring];
@@ -1570,6 +1667,7 @@
     if ([[CD3DGSCameraService shared] isRecording]) {
         [[CD3DGSCameraService shared] stopRecording];
     }
+    [self cancelPreparationFlow];
     [self.navigationController popViewControllerAnimated:YES];
 }
 

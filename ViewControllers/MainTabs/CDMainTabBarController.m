@@ -19,31 +19,10 @@
     UINavigationController *roomShootNavigationController = [self.class roomShootDemoNavigationController];
 
     self.viewControllers = @[
-        [self navigationControllerWithTitle:@"参数相机"
-                                      image:@"camera.aperture"
-                         destinationBuilder:^UIViewController *{
-                             return [[CDCameraViewController alloc] init];
-                         }],
-        [self navigationControllerWithTitle:@"mesh相机"
-                                      image:@"square.3.layers.3d"
-                         destinationBuilder:^UIViewController *{
-                                return [[CDMeshCameraViewController alloc] init];
-                         }],
-//        [self navigationControllerWithTitle:@"双目相机"
-//                                      image:@"camera.metering.matrix"
-//                         destinationBuilder:^UIViewController *{
-//                             return [[CDStereoCameraViewController alloc] init];
-//                         }],
         roomShootNavigationController,
-
         [self navigationControllerWithRootViewController:[[CDCapturePlanViewController alloc] init]
                                                     title:@"拍摄方案"
-                                                    image:@"viewfinder"],
-        [self navigationControllerWithTitle:@"待定"
-                                      image:@"ellipsis.circle"
-                         destinationBuilder:^UIViewController *{
-                             return [[CD3DGSCaptureViewController alloc] init];
-                         }]
+                                                    image:@"viewfinder"]
     ];
 }
 
