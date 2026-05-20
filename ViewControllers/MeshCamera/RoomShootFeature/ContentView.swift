@@ -17,15 +17,45 @@ enum CaptureLivePreviewKind {
 
 struct ContentView: View {
     let onShowCaptureList: () -> Void
+    let onCaptureFinished: ((URL) -> Void)?
+    let onCancel: (() -> Void)?
     var showsRenderModePicker: Bool = true
     var showsDownloadListButton: Bool = true
     var showsMainMeshOverlay: Bool = true
     var livePreviewKind: CaptureLivePreviewKind = .mesh
+    var titleText: String = "网格采集"
+    var helpText: String?
+    var generatesReviewOnStop: Bool = true
 
-    @StateObject private var model = CaptureSessionModel()
+    @StateObject private var model: CaptureSessionModel
     @StateObject private var liveMeshPreviewStore = LiveMeshPreviewSceneStore()
     @StateObject private var liveTrajectoryPreviewStore = LiveTrajectoryPreviewStore()
     @State private var blink = false
+
+    init(
+        onShowCaptureList: @escaping () -> Void,
+        onCaptureFinished: ((URL) -> Void)? = nil,
+        onCancel: (() -> Void)? = nil,
+        showsRenderModePicker: Bool = true,
+        showsDownloadListButton: Bool = true,
+        showsMainMeshOverlay: Bool = true,
+        livePreviewKind: CaptureLivePreviewKind = .mesh,
+        titleText: String = "网格采集",
+        helpText: String? = nil,
+        generatesReviewOnStop: Bool = true
+    ) {
+        self.onShowCaptureList = onShowCaptureList
+        self.onCaptureFinished = onCaptureFinished
+        self.onCancel = onCancel
+        self.showsRenderModePicker = showsRenderModePicker
+        self.showsDownloadListButton = showsDownloadListButton
+        self.showsMainMeshOverlay = showsMainMeshOverlay
+        self.livePreviewKind = livePreviewKind
+        self.titleText = titleText
+        self.helpText = helpText
+        self.generatesReviewOnStop = generatesReviewOnStop
+        _model = StateObject(wrappedValue: CaptureSessionModel(generatesReviewOnStop: generatesReviewOnStop))
+    }
 
     var body: some View {
         ZStack {
@@ -73,6 +103,10 @@ struct ContentView: View {
             VStack {
                 HStack {
                     VStack(alignment: .leading, spacing: 6) {
+                        Text(titleText)
+                            .font(.headline.weight(.semibold))
+                            .foregroundStyle(.white)
+
                         Text(model.isRecording ? "录制中" : "未录制")
                             .font(.headline)
                             .padding(.horizontal, 10)
@@ -108,11 +142,35 @@ struct ContentView: View {
                                 .font(.caption2)
                                 .foregroundStyle(.white.opacity(0.95))
                         }
+
+                        if let helpText {
+                            Text(helpText)
+                                .font(.caption)
+                                .foregroundStyle(.white.opacity(0.92))
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                     }
                     .padding(.leading, 12)
                     .padding(.top, 12)
 
                     Spacer()
+
+                    if let onCancel {
+                        Button {
+                            onCancel()
+                        } label: {
+                            Image(systemName: "xmark")
+                                .font(.headline.weight(.semibold))
+                                .frame(width: 34, height: 34)
+                                .background(.black.opacity(0.50))
+                                .foregroundStyle(.white)
+                                .clipShape(Circle())
+                        }
+                        .disabled(model.isRecording)
+                        .opacity(model.isRecording ? 0.35 : 1.0)
+                        .padding(.top, 14)
+                        .padding(.trailing, 12)
+                    }
                 }
 
                 if showsRenderModePicker {
@@ -269,6 +327,11 @@ struct ContentView: View {
             if newValue {
                 liveMeshPreviewStore.reset()
                 liveTrajectoryPreviewStore.reset()
+            }
+        }
+        .onChange(of: model.lastCompletedVideoURL) { newValue in
+            if let newValue {
+                onCaptureFinished?(newValue)
             }
         }
         .sheet(isPresented: $model.isReviewPresented) {

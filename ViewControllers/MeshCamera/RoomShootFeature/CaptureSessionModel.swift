@@ -27,6 +27,7 @@ final class CaptureSessionModel: ObservableObject {
     @Published var planeCoveragePlaneCount: Int = 0
     @Published var planeCoverageRatio: Double = 0
     @Published var skyboxCoverageRatio: Double = 0
+    @Published var lastCompletedVideoURL: URL?
 
     @Published var renderResetCounter: Int = 0
 
@@ -46,8 +47,10 @@ final class CaptureSessionModel: ObservableObject {
     private var pendingReviewMeshExport: MeshExportInfo?
 
     private let recorder = VideoPoseRecorder()
+    private let generatesReviewOnStop: Bool
 
-    init() {
+    init(generatesReviewOnStop: Bool = true) {
+        self.generatesReviewOnStop = generatesReviewOnStop
         // Build a device-capability driven mode list so the same app runs on both LiDAR and non-LiDAR devices.
         // Non‑LiDAR friendly: skybox/frustum coverage always works.
         var modes: [RenderMode] = [.skyboxCoverage, .planeCoverage, .pointCloud]
@@ -70,6 +73,7 @@ final class CaptureSessionModel: ObservableObject {
     func startRecording() {
         guard !isRecording else { return }
         lastExportSummary = nil
+        lastCompletedVideoURL = nil
         isPackaging = false
         isReviewPresented = false
         isGeneratingReview = false
@@ -102,15 +106,25 @@ final class CaptureSessionModel: ObservableObject {
                     """
                     print("Video saved at: \(export.videoURL.path)")
                     print("Pose JSON saved at: \(export.jsonURL.path)")
+                    self?.lastCompletedVideoURL = export.videoURL
 
                     // Kick off on-device review generation (acceptable slight wait).
-                    await self?.startGeneratingReview(export: export)
+                    if self?.generatesReviewOnStop == true {
+                        await self?.startGeneratingReview(export: export)
+                    }
                 case .failure(let error):
                     self?.lastExportSummary = "保存失败: \(error.localizedDescription)"
                     print("Export failed: \(error)")
                 }
             }
         }
+    }
+
+    func cancelRecording() {
+        guard isRecording else { return }
+        isRecording = false
+        UIApplication.shared.isIdleTimerDisabled = false
+        isPackaging = false
     }
 
     func handleMotion(linearSpeed: Double, angularSpeed: Double, isTooFast: Bool) {

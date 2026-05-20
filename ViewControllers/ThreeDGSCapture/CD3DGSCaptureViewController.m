@@ -12,6 +12,18 @@
 #import <QuartzCore/QuartzCore.h>
 #import "CaptureDemo-Swift.h"
 
+static NSString * const CD3DGSMeshStepCaptureDidFinishNotification = @"CD3DGSMeshStepCaptureDidFinishNotification";
+static NSString * const CD3DGSMeshStepCaptureDidBecomeReadyNotification = @"CD3DGSMeshStepCaptureDidBecomeReadyNotification";
+static NSString * const CD3DGSMeshStepCaptureVideoURLUserInfoKey = @"videoURL";
+static NSTimeInterval const CD3DGSMeshStepMinimumPreparationDuration = 1.25;
+
+@protocol CD3DGSMeshStepInlineCaptureControlling <NSObject>
+- (void)startRecording;
+- (void)stopRecording;
+- (void)cancelRecording;
+- (BOOL)isRecording;
+@end
+
 @interface CD3DGSCaptureViewController ()
 
 @property (nonatomic, strong) AVCaptureVideoPreviewLayer *previewLayer;
@@ -40,6 +52,16 @@
 @property (nonatomic, assign) BOOL isStartingRecording;
 @property (nonatomic, assign) BOOL isRecordingFlowActive;
 @property (nonatomic, strong) NSDate *recordingOverlaySuppressedUntil;
+@property (nonatomic, strong) UIViewController<CD3DGSMeshStepInlineCaptureControlling> *meshStepInlineViewController;
+@property (nonatomic, assign) BOOL isPreparingMeshStep;
+@property (nonatomic, assign) BOOL isMeshStepReady;
+@property (nonatomic, assign) BOOL isMeshStepRecording;
+@property (nonatomic, strong) NSDate *meshStepPreparationStartDate;
+@property (nonatomic, strong) NSDate *meshStepRecordingStartDate;
+@property (nonatomic, strong) UIView *meshPreparationOverlayView;
+@property (nonatomic, strong) UIActivityIndicatorView *meshPreparationActivityIndicator;
+@property (nonatomic, strong) UILabel *meshPreparationTitleLabel;
+@property (nonatomic, strong) UILabel *meshPreparationSubtitleLabel;
 @property (nonatomic, strong) UIView *guideVideoOverlayView;
 @property (nonatomic, strong) UIView *guideVideoFrameView;
 @property (nonatomic, strong) UILabel *guideVideoTitleLabel;
@@ -124,6 +146,14 @@
                                              selector:@selector(recordingDidFinish:)
                                                  name:CD3DGSCameraDidFinishRecordingNotification
                                               object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(meshStepCaptureDidFinish:)
+                                                 name:CD3DGSMeshStepCaptureDidFinishNotification
+                                               object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(meshStepCaptureDidBecomeReady:)
+                                                 name:CD3DGSMeshStepCaptureDidBecomeReadyNotification
+                                               object:nil];
 }
 
 - (void)dealloc {
@@ -140,6 +170,7 @@
     UIView *previewContainer1 = [self.view viewWithTag:100];
     previewContainer1.frame = self.view.bounds;
     self.previewLayer.frame = previewContainer1.bounds;
+    self.meshStepInlineViewController.view.frame = previewContainer1.bounds;
     self.imuReservedContainerView.frame = self.view.bounds;
 
     self.topBar.frame = CGRectMake(0, safeTop, screenWidth, 96);
@@ -237,6 +268,17 @@
     self.blurStatusLabel.frame = CGRectInset(self.blurStatusContainerView.bounds, 12.0, 5.0);
 
     self.guideVideoOverlayView.frame = self.view.bounds;
+    self.meshPreparationOverlayView.frame = self.view.bounds;
+    CGFloat preparationCardWidth = MIN(screenWidth - 56.0, 320.0);
+    CGFloat preparationCardHeight = 172.0;
+    CGFloat preparationCardX = (screenWidth - preparationCardWidth) / 2.0;
+    CGFloat preparationCardY = (self.view.bounds.size.height - preparationCardHeight) / 2.0;
+    UIView *preparationCardView = [self.meshPreparationOverlayView viewWithTag:4100];
+    preparationCardView.frame = CGRectMake(preparationCardX, preparationCardY, preparationCardWidth, preparationCardHeight);
+    self.meshPreparationActivityIndicator.frame = CGRectMake((preparationCardWidth - 36.0) / 2.0, 26.0, 36.0, 36.0);
+    self.meshPreparationTitleLabel.frame = CGRectMake(18.0, 78.0, preparationCardWidth - 36.0, 28.0);
+    self.meshPreparationSubtitleLabel.frame = CGRectMake(24.0, 112.0, preparationCardWidth - 48.0, 44.0);
+
     CGFloat guideWidth = MIN(screenWidth - 48, 360);
     CGFloat guideHeight = guideWidth * 9.0 / 16.0;
     CGFloat guideY = (self.view.bounds.size.height - guideHeight) / 2.0;
@@ -335,6 +377,7 @@
     if (!self.guideVideoOverlayView.hidden) {
         [self.view bringSubviewToFront:self.guideVideoOverlayView];
     }
+    [self refreshCaptureChromeZOrder];
 }
 
 - (void)viewWillAppear:(BOOL)animated {
@@ -353,6 +396,9 @@
 - (void)viewWillDisappear:(BOOL)animated {
     [super viewWillDisappear:animated];
     [self.navigationController setNavigationBarHidden:NO animated:animated];
+    if (self.isMeshStepRecording || self.isPreparingMeshStep) {
+        [self stopMeshStepCaptureAndDiscard:YES];
+    }
     [[CD3DGSCameraService shared] stopSession];
     [CD3DGSCameraService shared].blurStatusHandler = nil;
     [self stopUITimer];
@@ -461,9 +507,47 @@
     [bottomBar addSubview:self.nextStepLabel];
 
     [self setupGuideVideoOverlay];
+    [self setupMeshPreparationOverlay];
 
     [self updateRecordButton:NO];
     [self updateGuidanceUI];
+}
+
+- (void)setupMeshPreparationOverlay {
+    self.meshPreparationOverlayView = [[UIView alloc] initWithFrame:self.view.bounds];
+    self.meshPreparationOverlayView.backgroundColor = [[UIColor blackColor] colorWithAlphaComponent:0.72];
+    self.meshPreparationOverlayView.hidden = YES;
+    self.meshPreparationOverlayView.alpha = 0;
+    self.meshPreparationOverlayView.userInteractionEnabled = YES;
+    [self.view addSubview:self.meshPreparationOverlayView];
+
+    UIView *cardView = [[UIView alloc] initWithFrame:CGRectZero];
+    cardView.tag = 4100;
+    cardView.backgroundColor = [[UIColor colorWithWhite:0.06 alpha:1.0] colorWithAlphaComponent:0.88];
+    cardView.layer.cornerRadius = 18.0;
+    cardView.layer.borderWidth = 1.0;
+    cardView.layer.borderColor = [[UIColor whiteColor] colorWithAlphaComponent:0.16].CGColor;
+    cardView.clipsToBounds = YES;
+    [self.meshPreparationOverlayView addSubview:cardView];
+
+    self.meshPreparationActivityIndicator = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleLarge];
+    self.meshPreparationActivityIndicator.color = [UIColor whiteColor];
+    [cardView addSubview:self.meshPreparationActivityIndicator];
+
+    self.meshPreparationTitleLabel = [[UILabel alloc] initWithFrame:CGRectZero];
+    self.meshPreparationTitleLabel.text = @"正在启动 Mesh 扫描";
+    self.meshPreparationTitleLabel.textColor = [UIColor whiteColor];
+    self.meshPreparationTitleLabel.font = [UIFont systemFontOfSize:18 weight:UIFontWeightSemibold];
+    self.meshPreparationTitleLabel.textAlignment = NSTextAlignmentCenter;
+    [cardView addSubview:self.meshPreparationTitleLabel];
+
+    self.meshPreparationSubtitleLabel = [[UILabel alloc] initWithFrame:CGRectZero];
+    self.meshPreparationSubtitleLabel.text = @"正在初始化 ARKit 相机流和空间网格，请保持手机稳定";
+    self.meshPreparationSubtitleLabel.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.78];
+    self.meshPreparationSubtitleLabel.font = [UIFont systemFontOfSize:14 weight:UIFontWeightMedium];
+    self.meshPreparationSubtitleLabel.textAlignment = NSTextAlignmentCenter;
+    self.meshPreparationSubtitleLabel.numberOfLines = 2;
+    [cardView addSubview:self.meshPreparationSubtitleLabel];
 }
 
 - (void)setupPitchIMUOverlay {
@@ -926,9 +1010,9 @@
 }
 
 - (void)updateGuidanceUI {
-    BOOL isBusy = [[CD3DGSCameraService shared] isRecording] || self.isFinishingCurrentRecording || self.isPreparingToRecord || self.isStartingRecording;
+    BOOL isRecording = [[CD3DGSCameraService shared] isRecording] || self.isMeshStepRecording;
+    BOOL isBusy = isRecording || self.isFinishingCurrentRecording || self.isPreparingToRecord || self.isStartingRecording || self.isPreparingMeshStep;
     self.captureStepLabel.text = self.guidanceState.currentInstruction;
-    BOOL isRecording = [[CD3DGSCameraService shared] isRecording];
     BOOL suppressRecordingOverlay = [self shouldSuppressRecordingOverlay];
     NSString *warningText = (isRecording && !suppressRecordingOverlay) ? [self currentWarningToastText] : nil;
     BOOL shouldShowLongToast = !self.isRecordingFlowActive && !suppressRecordingOverlay;
@@ -940,8 +1024,23 @@
     [self.view setNeedsLayout];
     [self updateStepButton:self.previousStepButton label:self.previousStepLabel enabled:self.guidanceState.canMoveToPreviousStep && !isBusy];
     [self updateStepButton:self.nextStepButton label:self.nextStepLabel enabled:self.guidanceState.canMoveToNextStep && !isBusy];
-    self.recordButton.enabled = !self.guidanceState.isComplete && !self.isFinishingCurrentRecording && !self.isPreparingToRecord && !self.isStartingRecording;
+    self.recordButton.enabled = !self.guidanceState.isComplete && !self.isFinishingCurrentRecording && !self.isPreparingToRecord && !self.isStartingRecording && !self.isPreparingMeshStep;
     self.recordButton.alpha = self.recordButton.enabled ? 1.0 : 0.45;
+}
+
+- (void)refreshCaptureChromeZOrder {
+    UIView *bottomBar = [self.view viewWithTag:200];
+    [self.view bringSubviewToFront:self.imuReservedContainerView];
+    [self.view bringSubviewToFront:self.topBar];
+    if (bottomBar) {
+        [self.view bringSubviewToFront:bottomBar];
+    }
+    if (!self.meshPreparationOverlayView.hidden) {
+        [self.view bringSubviewToFront:self.meshPreparationOverlayView];
+    }
+    if (!self.guideVideoOverlayView.hidden) {
+        [self.view bringSubviewToFront:self.guideVideoOverlayView];
+    }
 }
 
 - (BOOL)shouldSuppressRecordingOverlay {
@@ -1037,12 +1136,17 @@
 }
 
 - (void)updateUI {
-    BOOL isRecording = [[CD3DGSCameraService shared] isRecording];
+    BOOL cameraRecording = [[CD3DGSCameraService shared] isRecording];
+    BOOL isRecording = cameraRecording || self.isMeshStepRecording;
     if (isRecording && self.isStartingRecording) {
         self.isStartingRecording = NO;
     }
     [self updateRecordButton:isRecording];
-    if (isRecording) {
+    if (self.isMeshStepRecording) {
+        self.recordingDurationLabel.hidden = NO;
+        NSTimeInterval duration = self.meshStepRecordingStartDate ? -[self.meshStepRecordingStartDate timeIntervalSinceNow] : 0;
+        self.recordingDurationLabel.text = [self formatDuration:MAX(0, duration)];
+    } else if (cameraRecording) {
         self.recordingDurationLabel.hidden = NO;
         self.recordingDurationLabel.text = [self formatDuration:[CD3DGSCameraService shared].recordingDuration];
         [self startPitchMonitoringIfNeeded];
@@ -1463,7 +1567,12 @@
 }
 
 - (void)toggleRecording {
-    if (self.guidanceState.isComplete || self.isFinishingCurrentRecording) {
+    if (self.guidanceState.isComplete || self.isFinishingCurrentRecording || self.isPreparingMeshStep) {
+        return;
+    }
+
+    if (self.isMeshStepRecording) {
+        [self stopMeshStepCaptureAndDiscard:NO];
         return;
     }
 
@@ -1477,9 +1586,135 @@
         [self updateGuidanceUI];
     } else if (self.isPreparingToRecord) {
         return;
+    } else if (self.guidanceState.currentStepIndex == 2) {
+        [self beginMeshStepCapture];
     } else {
         [self beginGuideVideoBeforeRecording];
     }
+}
+
+- (void)beginMeshStepCapture {
+    Class hostClass = NSClassFromString(@"CD3DGSMeshStepInlineCaptureViewController");
+    if (!hostClass) {
+        [self showAlert:@"Mesh补扫不可用" message:@"当前版本未找到 ARKit Mesh 采集页面"];
+        return;
+    }
+
+    [self cancelPreparationFlow];
+    self.isRecordingFlowActive = YES;
+    self.isPreparingMeshStep = YES;
+    self.isMeshStepReady = NO;
+    self.isMeshStepRecording = NO;
+    self.meshStepPreparationStartDate = [NSDate date];
+    self.meshStepRecordingStartDate = nil;
+    self.recordingDurationLabel.hidden = YES;
+    [self showMeshPreparationOverlay];
+    [[CD3DGSCameraService shared] stopSession];
+
+    UIView *previewContainer = [self.view viewWithTag:100];
+    UIViewController<CD3DGSMeshStepInlineCaptureControlling> *hostVC = [[hostClass alloc] init];
+    [self addChildViewController:hostVC];
+    hostVC.view.frame = previewContainer.bounds;
+    hostVC.view.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    [previewContainer addSubview:hostVC.view];
+    [hostVC didMoveToParentViewController:self];
+    self.meshStepInlineViewController = hostVC;
+    [self refreshCaptureChromeZOrder];
+    [self updateGuidanceUI];
+}
+
+- (void)showMeshPreparationOverlay {
+    self.meshPreparationTitleLabel.text = @"正在启动 Mesh 扫描";
+    self.meshPreparationSubtitleLabel.text = @"正在初始化 ARKit 相机流和空间网格，请保持手机稳定";
+    [self.meshPreparationActivityIndicator startAnimating];
+    self.meshPreparationOverlayView.hidden = NO;
+    self.meshPreparationOverlayView.alpha = 1.0;
+    [self refreshCaptureChromeZOrder];
+}
+
+- (void)hideMeshPreparationOverlay {
+    [self.meshPreparationActivityIndicator stopAnimating];
+    self.meshPreparationOverlayView.hidden = YES;
+    self.meshPreparationOverlayView.alpha = 0;
+}
+
+- (void)meshStepCaptureDidBecomeReady:(NSNotification *)notification {
+    if (notification.object != self.meshStepInlineViewController || !self.isPreparingMeshStep) {
+        return;
+    }
+    self.isMeshStepReady = YES;
+    [self attemptStartPreparedMeshStepRecording];
+}
+
+- (void)attemptStartPreparedMeshStepRecording {
+    if (!self.isPreparingMeshStep || !self.isMeshStepReady || !self.meshStepInlineViewController) {
+        return;
+    }
+
+    NSTimeInterval elapsed = self.meshStepPreparationStartDate ? -[self.meshStepPreparationStartDate timeIntervalSinceNow] : CD3DGSMeshStepMinimumPreparationDuration;
+    if (elapsed < CD3DGSMeshStepMinimumPreparationDuration) {
+        NSTimeInterval delay = CD3DGSMeshStepMinimumPreparationDuration - elapsed;
+        __weak typeof(self) weakSelf = self;
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            [weakSelf attemptStartPreparedMeshStepRecording];
+        });
+        return;
+    }
+
+    self.isPreparingMeshStep = NO;
+    self.isMeshStepRecording = YES;
+    self.meshStepRecordingStartDate = [NSDate date];
+    self.recordingDurationLabel.text = @"00:00.0";
+    self.recordingDurationLabel.hidden = NO;
+    [self hideMeshPreparationOverlay];
+    [self.meshStepInlineViewController startRecording];
+    [self refreshCaptureChromeZOrder];
+    [self updateGuidanceUI];
+}
+
+- (void)stopMeshStepCaptureAndDiscard:(BOOL)discard {
+    if (!self.meshStepInlineViewController) {
+        self.isPreparingMeshStep = NO;
+        self.isMeshStepReady = NO;
+        self.isMeshStepRecording = NO;
+        self.meshStepRecordingStartDate = nil;
+        [self hideMeshPreparationOverlay];
+        return;
+    }
+
+    if (self.isPreparingMeshStep || discard) {
+        [self.meshStepInlineViewController cancelRecording];
+        [self removeMeshStepInlineViewController];
+        [[CD3DGSCameraService shared] startSession];
+        self.isPreparingMeshStep = NO;
+        self.isMeshStepReady = NO;
+        self.isMeshStepRecording = NO;
+        self.meshStepPreparationStartDate = nil;
+        self.meshStepRecordingStartDate = nil;
+        self.isFinishingCurrentRecording = NO;
+        self.isRecordingFlowActive = NO;
+        self.recordButton.enabled = YES;
+        [self hideMeshPreparationOverlay];
+        [self updateGuidanceUI];
+        return;
+    }
+
+    self.isFinishingCurrentRecording = !discard;
+    self.recordButton.enabled = NO;
+    [self updateGuidanceUI];
+
+    [self.meshStepInlineViewController stopRecording];
+}
+
+- (void)removeMeshStepInlineViewController {
+    UIViewController *hostVC = self.meshStepInlineViewController;
+    if (!hostVC) {
+        return;
+    }
+    [hostVC willMoveToParentViewController:nil];
+    [hostVC.view removeFromSuperview];
+    [hostVC removeFromParentViewController];
+    self.meshStepInlineViewController = nil;
 }
 
 - (void)beginGuideVideoBeforeRecording {
@@ -1668,6 +1903,59 @@
     }
 }
 
+- (void)meshStepCaptureDidFinish:(NSNotification *)notification {
+    NSURL *videoURL = notification.userInfo[CD3DGSMeshStepCaptureVideoURLUserInfoKey];
+    if (![videoURL isKindOfClass:[NSURL class]]) {
+        [self removeMeshStepInlineViewController];
+        [[CD3DGSCameraService shared] startSession];
+        self.isPreparingMeshStep = NO;
+        self.isMeshStepReady = NO;
+        self.isMeshStepRecording = NO;
+        self.meshStepPreparationStartDate = nil;
+        self.meshStepRecordingStartDate = nil;
+        self.isRecordingFlowActive = NO;
+        self.isFinishingCurrentRecording = NO;
+        self.recordButton.enabled = YES;
+        [self hideMeshPreparationOverlay];
+        [self updateGuidanceUI];
+        return;
+    }
+
+    NSString *roomName = @"分间采集";
+    [[CDVideoStorageManager shared] saveVideoToDocuments:videoURL roomName:roomName completion:^(NSURL * _Nullable savedURL, NSError * _Nullable error) {
+        if (savedURL) {
+            NSLog(@"Mesh补扫视频已保存到Documents: %@", savedURL.path);
+        } else {
+            NSLog(@"Mesh补扫视频保存到Documents失败: %@", error.localizedDescription);
+        }
+    }];
+    [[CDVideoStorageManager shared] saveVideoToPhotoLibrary:videoURL completion:^(BOOL success, NSError * _Nullable error) {
+        if (success) {
+            NSLog(@"Mesh补扫视频已保存到相册");
+        } else {
+            NSLog(@"Mesh补扫视频保存到相册失败: %@", error.localizedDescription);
+        }
+    }];
+
+    [self.guidanceState completeCurrentStepWithVideoURL:videoURL];
+    [self removeMeshStepInlineViewController];
+    [[CD3DGSCameraService shared] startSession];
+    self.isPreparingMeshStep = NO;
+    self.isMeshStepReady = NO;
+    self.isMeshStepRecording = NO;
+    self.meshStepPreparationStartDate = nil;
+    self.meshStepRecordingStartDate = nil;
+    self.isRecordingFlowActive = NO;
+    self.isFinishingCurrentRecording = NO;
+    self.isPreparingToRecord = NO;
+    self.isStartingRecording = NO;
+    self.recordingDurationLabel.hidden = YES;
+    self.stepGifCollapsed = NO;
+    self.recordButton.enabled = YES;
+    [self hideMeshPreparationOverlay];
+    [self updateGuidanceUI];
+}
+
 - (CDRoomItem *)demoPassedRoom {
     CDRoomItem *room = [[CDRoomItem alloc] init];
     room.roomId = @"demo_passed_room";
@@ -1679,6 +1967,9 @@
 }
 
 - (void)goBack {
+    if (self.isMeshStepRecording || self.meshStepInlineViewController) {
+        [self stopMeshStepCaptureAndDiscard:YES];
+    }
     if ([[CD3DGSCameraService shared] isRecording]) {
         [[CD3DGSCameraService shared] stopRecording];
     }
