@@ -2,12 +2,16 @@
 
 @implementation CDMeshCameraViewController
 
+- (NSString *)captureHostViewControllerClassName {
+    return @"CDMeshCaptureHostViewController";
+}
+
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.view.backgroundColor = [UIColor systemBackgroundColor];
     self.title = @"mesh相机";
 
-    Class hostClass = NSClassFromString(@"CDMeshCaptureHostViewController");
+    Class hostClass = NSClassFromString([self captureHostViewControllerClassName]);
     UIViewController *hostViewController = hostClass ? [[hostClass alloc] init] : nil;
     if (!hostViewController) {
         return;

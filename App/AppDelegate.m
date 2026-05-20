@@ -6,7 +6,8 @@
 - (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions {
     self.supportedOrientationMask = UIInterfaceOrientationMaskPortrait;
     self.window = [[UIWindow alloc] initWithFrame:[UIScreen mainScreen].bounds];
-    self.window.rootViewController = [CDMainTabBarController roomShootDemoNavigationController];
+//    self.window.rootViewController = [CDMainTabBarController roomShootDemoNavigationController];
+    self.window.rootViewController = [[CDMainTabBarController alloc] init];
     [self.window makeKeyAndVisible];
     return YES;
 }
