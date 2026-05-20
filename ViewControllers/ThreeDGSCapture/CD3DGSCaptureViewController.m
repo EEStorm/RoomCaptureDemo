@@ -812,7 +812,8 @@
 }
 
 - (NSString *)stepGifResourceNameForIndex:(NSInteger)stepIndex {
-    return @"guide01";
+    NSInteger normalizedIndex = MAX(0, MIN(stepIndex, 3));
+    return [NSString stringWithFormat:@"guide%02ld", (long)normalizedIndex + 1];
 }
 
 - (UIImage *)animatedGIFImageNamed:(NSString *)name {
