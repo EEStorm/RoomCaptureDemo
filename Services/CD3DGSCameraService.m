@@ -1,4 +1,5 @@
 #import "CD3DGSCameraService.h"
+#import "CDCameraSettingsViewController.h"
 #import "CaptureDemo-Swift.h"
 #import <AVFoundation/AVFoundation.h>
 
@@ -118,6 +119,7 @@ NSString * const CD3DGSCameraRecordingURLKey = @"CD3DGSCameraRecordingURLKey";
     if (_autoLockSettleSeconds <= 0) _autoLockSettleSeconds = 1.0;
 
     _currentCameraLens = [defaults integerForKey:@"CDSettingsCameraLens"];
+    [self applyBlurMonitorConfiguration];
 }
 
 - (void)settingsDidChange:(NSNotification *)notification {
@@ -172,6 +174,18 @@ NSString * const CD3DGSCameraRecordingURLKey = @"CD3DGSCameraRecordingURLKey";
     });
 }
 
+- (void)applyBlurMonitorConfiguration {
+    if (!self.blurMonitor) {
+        return;
+    }
+
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    CGFloat clearThreshold = [defaults doubleForKey:CDSettingsBlurClearThresholdKey];
+    CGFloat softThreshold = [defaults doubleForKey:CDSettingsBlurSoftThresholdKey];
+    self.blurMonitor.clearThreshold = clearThreshold > 0 ? clearThreshold : 45.0;
+    self.blurMonitor.softThreshold = softThreshold > 0 ? softThreshold : 20.0;
+}
+
 - (AVCaptureVideoPreviewLayer *)setupCamera {
     AVCaptureSession *session = [[AVCaptureSession alloc] init];
     [session beginConfiguration];
@@ -218,6 +232,7 @@ NSString * const CD3DGSCameraRecordingURLKey = @"CD3DGSCameraRecordingURLKey";
     [self configureDevice:device];
     self.videoOutput = movieOutput;
     self.blurMonitor = [[CD3DGSBlurMonitor alloc] init];
+    [self applyBlurMonitorConfiguration];
     self.currentBlurState = NSIntegerMin;
 
     AVCaptureVideoPreviewLayer *preview = [AVCaptureVideoPreviewLayer layerWithSession:session];

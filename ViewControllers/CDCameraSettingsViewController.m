@@ -11,6 +11,12 @@ static NSString * const kCDSettingsCameraLens = @"CDSettingsCameraLens";
 static NSString * const kCDLastLockedExposureSeconds = @"CDLastLockedExposureSeconds";
 static NSString * const kCDLastLockedISO = @"CDLastLockedISO";
 static NSString * const kCDLastLockedTimestamp = @"CDLastLockedTimestamp";
+NSString * const CDSettingsIMUPitchThresholdDegreesKey = @"CDSettingsIMUPitchThresholdDegrees";
+NSString * const CDSettingsIMURollThresholdDegreesKey = @"CDSettingsIMURollThresholdDegrees";
+NSString * const CDSettingsIMUAngularSpeedThresholdDegreesPerSecondKey = @"CDSettingsIMUAngularSpeedThresholdDegreesPerSecond";
+NSString * const CDSettingsIMUMovementSpeedThresholdMetersPerSecondKey = @"CDSettingsIMUMovementSpeedThresholdMetersPerSecond";
+NSString * const CDSettingsBlurClearThresholdKey = @"CDSettingsBlurClearThreshold";
+NSString * const CDSettingsBlurSoftThresholdKey = @"CDSettingsBlurSoftThreshold";
 
 @interface CDCameraSettingsViewController () <UITableViewDataSource, UITableViewDelegate>
 
@@ -24,6 +30,14 @@ static NSString * const kCDLastLockedTimestamp = @"CDLastLockedTimestamp";
 @property (nonatomic, assign) float autoLockSettleSeconds;
 @property (nonatomic, assign) NSInteger resolution;
 @property (nonatomic, assign) NSInteger cameraLens;
+@property (nonatomic, assign) BOOL imuSectionExpanded;
+@property (nonatomic, assign) BOOL qualitySectionExpanded;
+@property (nonatomic, assign) CGFloat imuPitchThresholdDegrees;
+@property (nonatomic, assign) CGFloat imuRollThresholdDegrees;
+@property (nonatomic, assign) CGFloat imuAngularSpeedThresholdDegreesPerSecond;
+@property (nonatomic, assign) CGFloat imuMovementSpeedThresholdMetersPerSecond;
+@property (nonatomic, assign) CGFloat blurClearThreshold;
+@property (nonatomic, assign) CGFloat blurSoftThreshold;
 
 @end
 
@@ -64,6 +78,12 @@ static NSString * const kCDLastLockedTimestamp = @"CDLastLockedTimestamp";
                                                                               style:UIBarButtonItemStyleDone
                                                                              target:self
                                                                              action:@selector(saveTapped)];
+}
+
+- (CGFloat)defaultValueForKey:(NSString *)key fallback:(CGFloat)fallback {
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    CGFloat value = [defaults doubleForKey:key];
+    return value > 0 ? value : fallback;
 }
 
 - (void)setupUI {
@@ -111,6 +131,13 @@ static NSString * const kCDLastLockedTimestamp = @"CDLastLockedTimestamp";
     if (self.resolution == 0) self.resolution = 1; // 1 = 1080P
 
     self.cameraLens = [defaults integerForKey:kCDSettingsCameraLens];
+
+    self.imuPitchThresholdDegrees = [self defaultValueForKey:CDSettingsIMUPitchThresholdDegreesKey fallback:8.0];
+    self.imuRollThresholdDegrees = [self defaultValueForKey:CDSettingsIMURollThresholdDegreesKey fallback:20.0];
+    self.imuAngularSpeedThresholdDegreesPerSecond = [self defaultValueForKey:CDSettingsIMUAngularSpeedThresholdDegreesPerSecondKey fallback:45.0];
+    self.imuMovementSpeedThresholdMetersPerSecond = [self defaultValueForKey:CDSettingsIMUMovementSpeedThresholdMetersPerSecondKey fallback:0.5];
+    self.blurClearThreshold = [self defaultValueForKey:CDSettingsBlurClearThresholdKey fallback:45.0];
+    self.blurSoftThreshold = [self defaultValueForKey:CDSettingsBlurSoftThresholdKey fallback:20.0];
 }
 
 - (void)saveSettings {
@@ -123,6 +150,12 @@ static NSString * const kCDLastLockedTimestamp = @"CDLastLockedTimestamp";
     [defaults setFloat:self.autoLockSettleSeconds forKey:kCDSettingsAutoLockSettleSeconds];
     [defaults setInteger:self.resolution forKey:kCDSettingsResolution];
     [defaults setInteger:self.cameraLens forKey:kCDSettingsCameraLens];
+    [defaults setDouble:self.imuPitchThresholdDegrees forKey:CDSettingsIMUPitchThresholdDegreesKey];
+    [defaults setDouble:self.imuRollThresholdDegrees forKey:CDSettingsIMURollThresholdDegreesKey];
+    [defaults setDouble:self.imuAngularSpeedThresholdDegreesPerSecond forKey:CDSettingsIMUAngularSpeedThresholdDegreesPerSecondKey];
+    [defaults setDouble:self.imuMovementSpeedThresholdMetersPerSecond forKey:CDSettingsIMUMovementSpeedThresholdMetersPerSecondKey];
+    [defaults setDouble:self.blurClearThreshold forKey:CDSettingsBlurClearThresholdKey];
+    [defaults setDouble:self.blurSoftThreshold forKey:CDSettingsBlurSoftThresholdKey];
     [defaults synchronize];
 }
 
@@ -140,6 +173,14 @@ static NSString * const kCDLastLockedTimestamp = @"CDLastLockedTimestamp";
     self.iso = 320;           // ISO 320
     self.exposureMode = 0;     // Manual
     self.autoLockSettleSeconds = 1.0f; // 1s settle then lock
+    self.imuPitchThresholdDegrees = 8.0;
+    self.imuRollThresholdDegrees = 20.0;
+    self.imuAngularSpeedThresholdDegreesPerSecond = 45.0;
+    self.imuMovementSpeedThresholdMetersPerSecond = 0.5;
+    self.blurClearThreshold = 45.0;
+    self.blurSoftThreshold = 20.0;
+    self.imuSectionExpanded = NO;
+    self.qualitySectionExpanded = NO;
 
     [self.tableView reloadData];
 }
@@ -153,7 +194,7 @@ static NSString * const kCDLastLockedTimestamp = @"CDLastLockedTimestamp";
 #pragma mark - UITableViewDataSource
 
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
-    return 6;
+    return 8;
 }
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
@@ -164,6 +205,8 @@ static NSString * const kCDLastLockedTimestamp = @"CDLastLockedTimestamp";
         case 3: return 1;
         case 4: return 1;
         case 5: return (self.exposureMode == 2) ? 4 : 2;
+        case 6: return self.imuSectionExpanded ? 4 : 0;
+        case 7: return self.qualitySectionExpanded ? 2 : 0;
         default: return 0;
     }
 }
@@ -180,6 +223,53 @@ static NSString * const kCDLastLockedTimestamp = @"CDLastLockedTimestamp";
         case 5: return @"曝光/ISO";
         default: return nil;
     }
+}
+
+- (UIView *)tableView:(UITableView *)tableView viewForHeaderInSection:(NSInteger)section {
+    if (section < 6) {
+        return nil;
+    }
+
+    NSString *title = section == 6 ? @"IMU 限制" : @"画面质量";
+    BOOL expanded = (section == 6) ? self.imuSectionExpanded : self.qualitySectionExpanded;
+
+    UIControl *container = [[UIControl alloc] initWithFrame:CGRectZero];
+    container.backgroundColor = [UIColor clearColor];
+    container.tag = 600 + section;
+    [container addTarget:self action:@selector(sectionHeaderTapped:) forControlEvents:UIControlEventTouchUpInside];
+
+    UILabel *label = [[UILabel alloc] initWithFrame:CGRectZero];
+    label.translatesAutoresizingMaskIntoConstraints = NO;
+    label.text = title;
+    label.font = [UIFont boldSystemFontOfSize:15];
+    label.textColor = [UIColor labelColor];
+    [container addSubview:label];
+
+    UIImageView *chevron = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:(expanded ? @"chevron.down" : @"chevron.right")]];
+    chevron.translatesAutoresizingMaskIntoConstraints = NO;
+    chevron.tintColor = [UIColor systemGrayColor];
+    chevron.contentMode = UIViewContentModeScaleAspectFit;
+    chevron.tag = 700 + section;
+    [container addSubview:chevron];
+
+    [NSLayoutConstraint activateConstraints:@[
+        [label.leadingAnchor constraintEqualToAnchor:container.leadingAnchor constant:16],
+        [label.centerYAnchor constraintEqualToAnchor:container.centerYAnchor],
+        [chevron.trailingAnchor constraintEqualToAnchor:container.trailingAnchor constant:-16],
+        [chevron.centerYAnchor constraintEqualToAnchor:container.centerYAnchor],
+        [chevron.widthAnchor constraintEqualToConstant:12],
+        [chevron.heightAnchor constraintEqualToConstant:12],
+    ]];
+
+    return container;
+}
+
+- (CGFloat)tableView:(UITableView *)tableView heightForHeaderInSection:(NSInteger)section {
+    return section < 6 ? 28.0 : 44.0;
+}
+
+- (CGFloat)tableView:(UITableView *)tableView heightForFooterInSection:(NSInteger)section {
+    return 0.01;
 }
 
 - (NSString *)exposureModeName:(NSInteger)mode {
@@ -318,9 +408,114 @@ static NSString * const kCDLastLockedTimestamp = @"CDLastLockedTimestamp";
                 cell.textLabel.textColor = [UIColor systemGrayColor];
             }
         }
+    } else if (indexPath.section == 6) {
+        if (indexPath.row == 0) {
+            cell.textLabel.text = [NSString stringWithFormat:@"俯仰角阈值 %.0f°", self.imuPitchThresholdDegrees];
+            UIStepper *stepper = [[UIStepper alloc] init];
+            stepper.minimumValue = 4;
+            stepper.maximumValue = 20;
+            stepper.stepValue = 1;
+            stepper.value = self.imuPitchThresholdDegrees;
+            stepper.translatesAutoresizingMaskIntoConstraints = NO;
+            stepper.tag = 401;
+            [stepper addTarget:self action:@selector(imuPitchThresholdChanged:) forControlEvents:UIControlEventValueChanged];
+            [cell.contentView addSubview:stepper];
+            [NSLayoutConstraint activateConstraints:@[
+                [stepper.centerYAnchor constraintEqualToAnchor:cell.contentView.centerYAnchor],
+                [stepper.rightAnchor constraintEqualToAnchor:cell.contentView.rightAnchor constant:-16],
+            ]];
+        } else if (indexPath.row == 1) {
+            cell.textLabel.text = [NSString stringWithFormat:@"侧倾角阈值 %.0f°", self.imuRollThresholdDegrees];
+            UIStepper *stepper = [[UIStepper alloc] init];
+            stepper.minimumValue = 5;
+            stepper.maximumValue = 45;
+            stepper.stepValue = 1;
+            stepper.value = self.imuRollThresholdDegrees;
+            stepper.translatesAutoresizingMaskIntoConstraints = NO;
+            stepper.tag = 402;
+            [stepper addTarget:self action:@selector(imuRollThresholdChanged:) forControlEvents:UIControlEventValueChanged];
+            [cell.contentView addSubview:stepper];
+            [NSLayoutConstraint activateConstraints:@[
+                [stepper.centerYAnchor constraintEqualToAnchor:cell.contentView.centerYAnchor],
+                [stepper.rightAnchor constraintEqualToAnchor:cell.contentView.rightAnchor constant:-16],
+            ]];
+        } else if (indexPath.row == 2) {
+            cell.textLabel.text = [NSString stringWithFormat:@"角速度阈值 %.0f°/s", self.imuAngularSpeedThresholdDegreesPerSecond];
+            UIStepper *stepper = [[UIStepper alloc] init];
+            stepper.minimumValue = 10;
+            stepper.maximumValue = 120;
+            stepper.stepValue = 1;
+            stepper.value = self.imuAngularSpeedThresholdDegreesPerSecond;
+            stepper.translatesAutoresizingMaskIntoConstraints = NO;
+            stepper.tag = 403;
+            [stepper addTarget:self action:@selector(imuAngularSpeedThresholdChanged:) forControlEvents:UIControlEventValueChanged];
+            [cell.contentView addSubview:stepper];
+            [NSLayoutConstraint activateConstraints:@[
+                [stepper.centerYAnchor constraintEqualToAnchor:cell.contentView.centerYAnchor],
+                [stepper.rightAnchor constraintEqualToAnchor:cell.contentView.rightAnchor constant:-16],
+            ]];
+        } else if (indexPath.row == 3) {
+            cell.textLabel.text = [NSString stringWithFormat:@"移动速度阈值 %.1fm/s", self.imuMovementSpeedThresholdMetersPerSecond];
+            UIStepper *stepper = [[UIStepper alloc] init];
+            stepper.minimumValue = 0.2;
+            stepper.maximumValue = 2.0;
+            stepper.stepValue = 0.1;
+            stepper.value = self.imuMovementSpeedThresholdMetersPerSecond;
+            stepper.translatesAutoresizingMaskIntoConstraints = NO;
+            stepper.tag = 404;
+            [stepper addTarget:self action:@selector(imuMovementThresholdChanged:) forControlEvents:UIControlEventValueChanged];
+            [cell.contentView addSubview:stepper];
+            [NSLayoutConstraint activateConstraints:@[
+                [stepper.centerYAnchor constraintEqualToAnchor:cell.contentView.centerYAnchor],
+                [stepper.rightAnchor constraintEqualToAnchor:cell.contentView.rightAnchor constant:-16],
+            ]];
+        }
+    } else if (indexPath.section == 7) {
+        if (indexPath.row == 0) {
+            cell.textLabel.text = [NSString stringWithFormat:@"清晰阈值 %.0f", self.blurClearThreshold];
+            UIStepper *stepper = [[UIStepper alloc] init];
+            stepper.minimumValue = 10;
+            stepper.maximumValue = 120;
+            stepper.stepValue = 1;
+            stepper.value = self.blurClearThreshold;
+            stepper.translatesAutoresizingMaskIntoConstraints = NO;
+            stepper.tag = 501;
+            [stepper addTarget:self action:@selector(blurClearThresholdChanged:) forControlEvents:UIControlEventValueChanged];
+            [cell.contentView addSubview:stepper];
+            [NSLayoutConstraint activateConstraints:@[
+                [stepper.centerYAnchor constraintEqualToAnchor:cell.contentView.centerYAnchor],
+                [stepper.rightAnchor constraintEqualToAnchor:cell.contentView.rightAnchor constant:-16],
+            ]];
+        } else if (indexPath.row == 1) {
+            cell.textLabel.text = [NSString stringWithFormat:@"偏糊阈值 %.0f", self.blurSoftThreshold];
+            UIStepper *stepper = [[UIStepper alloc] init];
+            stepper.minimumValue = 5;
+            stepper.maximumValue = 80;
+            stepper.stepValue = 1;
+            stepper.value = self.blurSoftThreshold;
+            stepper.translatesAutoresizingMaskIntoConstraints = NO;
+            stepper.tag = 502;
+            [stepper addTarget:self action:@selector(blurSoftThresholdChanged:) forControlEvents:UIControlEventValueChanged];
+            [cell.contentView addSubview:stepper];
+            [NSLayoutConstraint activateConstraints:@[
+                [stepper.centerYAnchor constraintEqualToAnchor:cell.contentView.centerYAnchor],
+                [stepper.rightAnchor constraintEqualToAnchor:cell.contentView.rightAnchor constant:-16],
+            ]];
+        }
     }
 
     return cell;
+}
+
+- (void)sectionHeaderTapped:(UIControl *)sender {
+    NSInteger section = sender.tag - 600;
+    if (section == 6) {
+        self.imuSectionExpanded = !self.imuSectionExpanded;
+        [self.tableView reloadSections:[NSIndexSet indexSetWithIndex:6] withRowAnimation:UITableViewRowAnimationAutomatic];
+    } else if (section == 7) {
+        self.qualitySectionExpanded = !self.qualitySectionExpanded;
+        [self.tableView reloadSections:[NSIndexSet indexSetWithIndex:7] withRowAnimation:UITableViewRowAnimationAutomatic];
+    }
 }
 
 - (void)whiteBalanceChanged:(UIStepper *)stepper {
@@ -341,6 +536,39 @@ static NSString * const kCDLastLockedTimestamp = @"CDLastLockedTimestamp";
 - (void)autoLockSettleChanged:(UIStepper *)stepper {
     self.autoLockSettleSeconds = stepper.value;
     [self.tableView reloadRowsAtIndexPaths:@[[NSIndexPath indexPathForRow:2 inSection:5]] withRowAnimation:UITableViewRowAnimationNone];
+}
+
+- (void)imuPitchThresholdChanged:(UIStepper *)stepper {
+    self.imuPitchThresholdDegrees = stepper.value;
+    [self.tableView reloadRowsAtIndexPaths:@[[NSIndexPath indexPathForRow:0 inSection:6]] withRowAnimation:UITableViewRowAnimationNone];
+}
+
+- (void)imuRollThresholdChanged:(UIStepper *)stepper {
+    self.imuRollThresholdDegrees = stepper.value;
+    [self.tableView reloadRowsAtIndexPaths:@[[NSIndexPath indexPathForRow:1 inSection:6]] withRowAnimation:UITableViewRowAnimationNone];
+}
+
+- (void)imuAngularSpeedThresholdChanged:(UIStepper *)stepper {
+    self.imuAngularSpeedThresholdDegreesPerSecond = stepper.value;
+    [self.tableView reloadRowsAtIndexPaths:@[[NSIndexPath indexPathForRow:2 inSection:6]] withRowAnimation:UITableViewRowAnimationNone];
+}
+
+- (void)imuMovementThresholdChanged:(UIStepper *)stepper {
+    self.imuMovementSpeedThresholdMetersPerSecond = stepper.value;
+    [self.tableView reloadRowsAtIndexPaths:@[[NSIndexPath indexPathForRow:3 inSection:6]] withRowAnimation:UITableViewRowAnimationNone];
+}
+
+- (void)blurClearThresholdChanged:(UIStepper *)stepper {
+    self.blurClearThreshold = stepper.value;
+    if (self.blurSoftThreshold >= self.blurClearThreshold) {
+        self.blurSoftThreshold = MAX(5.0, self.blurClearThreshold - 1.0);
+    }
+    [self.tableView reloadData];
+}
+
+- (void)blurSoftThresholdChanged:(UIStepper *)stepper {
+    self.blurSoftThreshold = MIN(stepper.value, self.blurClearThreshold - 1.0);
+    [self.tableView reloadRowsAtIndexPaths:@[[NSIndexPath indexPathForRow:1 inSection:7]] withRowAnimation:UITableViewRowAnimationNone];
 }
 
 #pragma mark - UITableViewDelegate

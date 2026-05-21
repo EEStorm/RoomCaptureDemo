@@ -3,6 +3,13 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
+FOUNDATION_EXPORT NSString * const CDSettingsIMUPitchThresholdDegreesKey;
+FOUNDATION_EXPORT NSString * const CDSettingsIMURollThresholdDegreesKey;
+FOUNDATION_EXPORT NSString * const CDSettingsIMUAngularSpeedThresholdDegreesPerSecondKey;
+FOUNDATION_EXPORT NSString * const CDSettingsIMUMovementSpeedThresholdMetersPerSecondKey;
+FOUNDATION_EXPORT NSString * const CDSettingsBlurClearThresholdKey;
+FOUNDATION_EXPORT NSString * const CDSettingsBlurSoftThresholdKey;
+
 @interface CDCameraSettingsViewController : UIViewController
 
 @end

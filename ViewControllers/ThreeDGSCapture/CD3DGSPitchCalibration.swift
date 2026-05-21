@@ -92,8 +92,8 @@ final class CD3DGSPitchCalibration: NSObject {
 @objcMembers
 final class CD3DGSBlurMonitor: NSObject {
     private let windowSize = 5
-    private let clearThreshold: CGFloat = 45.0
-    private let softThreshold: CGFloat = 20.0
+    public var clearThreshold: CGFloat = 45.0
+    public var softThreshold: CGFloat = 20.0
     private var recentVariances: [CGFloat] = []
     private(set) var currentState: CD3DGSBlurState = .clear
     private(set) var currentAverageVariance: CGFloat = 0
@@ -134,13 +134,13 @@ final class CD3DGSBlurMonitor: NSObject {
     static func statusText(for state: CD3DGSBlurState) -> String {
         switch state {
         case .clear:
-            return "画面清晰"
+            return "画面质量优"
         case .soft:
-            return "画面偏糊"
+            return "画面质量中"
         case .blurry:
-            return "画面模糊"
+            return "画面质量差"
         @unknown default:
-            return "画面清晰"
+            return "画面质量优"
         }
     }
 

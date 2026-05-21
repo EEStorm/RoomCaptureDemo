@@ -68,8 +68,10 @@
 @property (nonatomic, assign) CGFloat currentPitchDegrees;
 @property (nonatomic, assign) CGFloat currentPitchOffsetY;
 @property (nonatomic, assign) BOOL pitchWarningActive;
+@property (nonatomic, assign) CGFloat pitchWarningThresholdDegrees;
 @property (nonatomic, assign) CGFloat currentAngularSpeedDegreesPerSecond;
 @property (nonatomic, assign) BOOL angularSpeedWarningActive;
+@property (nonatomic, assign) CGFloat angularSpeedWarningThresholdDegreesPerSecond;
 @property (nonatomic, strong) UIView *imuRollLeftLimitLineView;
 @property (nonatomic, strong) UIView *imuRollRightLimitLineView;
 @property (nonatomic, strong) UILabel *imuRollAngleLabel;
@@ -81,12 +83,18 @@
 @property (nonatomic, strong) CAGradientLayer *imuBottomWarningGradientLayer;
 @property (nonatomic, assign) CGFloat currentRollDegrees;
 @property (nonatomic, assign) BOOL rollWarningActive;
+@property (nonatomic, assign) CGFloat rollWarningThresholdDegrees;
+@property (nonatomic, assign) BOOL blurWarningActive;
+@property (nonatomic, assign) NSTimeInterval warningCoverageAccumulatedSeconds;
+@property (nonatomic, assign) NSTimeInterval warningCoverageLastSampleTimestamp;
+@property (nonatomic, assign) BOOL warningCoverageTrackingActive;
 @property (nonatomic, strong) UIView *stepGifContainerView;
 @property (nonatomic, strong) UIImageView *stepGifImageView;
 @property (nonatomic, strong) NSCache<NSString *, UIImage *> *stepGifCache;
 @property (nonatomic, assign) NSInteger stepGifDisplayedIndex;
 @property (nonatomic, assign) BOOL stepGifCollapsed;
 @property (nonatomic, assign) CGFloat currentMovementSpeedMetersPerSecond;
+@property (nonatomic, assign) CGFloat movementWarningThresholdMetersPerSecond;
 @property (nonatomic, assign) CGFloat movementVelocityX;
 @property (nonatomic, assign) CGFloat movementVelocityY;
 @property (nonatomic, assign) CGFloat movementVelocityZ;
@@ -106,6 +114,7 @@
     self.stepGifCache = [[NSCache alloc] init];
     self.stepGifDisplayedIndex = NSNotFound;
     self.stepGifCollapsed = NO;
+    [self loadRuntimeThresholds];
     [self setupUI];
     [self setupCamera];
 
@@ -355,12 +364,16 @@
     [self.navigationController setNavigationBarHidden:NO animated:animated];
     [[CD3DGSCameraService shared] stopSession];
     [CD3DGSCameraService shared].blurStatusHandler = nil;
+    self.warningCoverageTrackingActive = NO;
     [self stopUITimer];
     [self cancelPreparationFlow];
 }
 
 - (void)settingsDidChange {
+    [self loadRuntimeThresholds];
     [self updateSettingsLabels];
+    [self updateGuidanceUI];
+    [self.view setNeedsLayout];
 }
 
 - (void)setupUI {
@@ -464,6 +477,22 @@
 
     [self updateRecordButton:NO];
     [self updateGuidanceUI];
+}
+
+- (void)loadRuntimeThresholds {
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+
+    CGFloat pitchThreshold = [defaults doubleForKey:CDSettingsIMUPitchThresholdDegreesKey];
+    self.pitchWarningThresholdDegrees = pitchThreshold > 0 ? pitchThreshold : 8.0;
+
+    CGFloat rollThreshold = [defaults doubleForKey:CDSettingsIMURollThresholdDegreesKey];
+    self.rollWarningThresholdDegrees = rollThreshold > 0 ? rollThreshold : 20.0;
+
+    CGFloat angularThreshold = [defaults doubleForKey:CDSettingsIMUAngularSpeedThresholdDegreesPerSecondKey];
+    self.angularSpeedWarningThresholdDegreesPerSecond = angularThreshold > 0 ? angularThreshold : 45.0;
+
+    CGFloat movementThreshold = [defaults doubleForKey:CDSettingsIMUMovementSpeedThresholdMetersPerSecondKey];
+    self.movementWarningThresholdMetersPerSecond = movementThreshold > 0 ? movementThreshold : 0.5;
 }
 
 - (void)setupPitchIMUOverlay {
@@ -660,7 +689,7 @@
     [self.imuReservedContainerView addSubview:self.blurStatusContainerView];
 
     self.blurStatusLabel = [[UILabel alloc] initWithFrame:CGRectZero];
-    self.blurStatusLabel.text = @"画面清晰";
+    self.blurStatusLabel.text = @"画面质量优";
     self.blurStatusLabel.textColor = [UIColor whiteColor];
     self.blurStatusLabel.font = [UIFont systemFontOfSize:14 weight:UIFontWeightSemibold];
     self.blurStatusLabel.textAlignment = NSTextAlignmentCenter;
@@ -966,9 +995,11 @@
     if (![[CD3DGSCameraService shared] isRecording] || self.isPreparingToRecord || self.isFinishingCurrentRecording) {
         self.blurStatusContainerView.hidden = YES;
         self.blurStatusContainerView.alpha = 0;
+        self.blurWarningActive = NO;
         return;
     }
 
+    [self sampleWarningCoverageIfNeeded];
     CD3DGSBlurState state = (CD3DGSBlurState)blurState;
     NSString *text = [CD3DGSBlurMonitor statusTextForState:state];
     NSString *statusText = [NSString stringWithFormat:@"%@ %.1f", text, variance];
@@ -989,6 +1020,7 @@
     self.blurStatusContainerView.backgroundColor = [tintColor colorWithAlphaComponent:0.30];
     self.blurStatusLabel.text = statusText;
     self.blurStatusLabel.textColor = accentColor;
+    self.blurWarningActive = (state != CD3DGSBlurStateClear);
 }
 
 - (void)setupCamera {
@@ -1051,6 +1083,7 @@
         [self startPitchMonitoringIfNeeded];
     } else if (self.isStartingRecording || [self shouldSuppressRecordingOverlay]) {
         self.recordingDurationLabel.hidden = NO;
+        [self sampleWarningCoverageIfNeeded];
     } else {
         self.recordingDurationLabel.hidden = YES;
         [self stopPitchMonitoring];
@@ -1248,10 +1281,13 @@
         return;
     }
 
+    [self sampleWarningCoverageIfNeeded];
     CGFloat smoothedSpeed = self.currentAngularSpeedDegreesPerSecond * 0.80 + speed * 0.20;
     self.currentAngularSpeedDegreesPerSecond = MIN(MAX(smoothedSpeed, 0.0), 360.0);
+
     BOOL warningActive = self.currentAngularSpeedDegreesPerSecond >= 45.0;
     BOOL shouldTriggerHaptic = (!self.angularSpeedWarningActive && warningActive && [self shouldTriggerMotionWarningFeedback]);
+
     self.angularSpeedWarningActive = warningActive;
     self.imuAngularSpeedLabel.hidden = NO;
     self.imuAngularSpeedLabel.text = [NSString stringWithFormat:@"角速度 %.0f°/s", self.currentAngularSpeedDegreesPerSecond];
@@ -1270,9 +1306,12 @@
         return;
     }
 
+    [self sampleWarningCoverageIfNeeded];
     self.currentMovementSpeedMetersPerSecond = MIN(MAX(speed, 0.0), 2.5);
+
     BOOL warningActive = self.currentMovementSpeedMetersPerSecond >= 0.5;
     BOOL shouldTriggerHaptic = (!self.movementWarningActive && warningActive && [self shouldTriggerMotionWarningFeedback]);
+
     self.movementWarningActive = warningActive;
     self.imuMovementSpeedLabel.hidden = NO;
     self.imuMovementSpeedLabel.text = warningActive ? [NSString stringWithFormat:@"移动过快 %.1fm/s", self.currentMovementSpeedMetersPerSecond]
@@ -1290,9 +1329,10 @@
         [self stopPitchMonitoring];
         return;
     }
+    [self sampleWarningCoverageIfNeeded];
     self.currentPitchDegrees = (CGFloat)pitchDegrees;
 
-    CGFloat threshold = 8.0;
+    CGFloat threshold = self.pitchWarningThresholdDegrees;
     CGFloat maxOffset = 52.0;
     self.currentPitchOffsetY = [CD3DGSPitchCalibration offsetYForRelativePitchDegrees:self.currentPitchDegrees
                                                                            threshold:threshold
@@ -1321,9 +1361,10 @@
         return;
     }
 
+    [self sampleWarningCoverageIfNeeded];
     self.currentRollDegrees = (CGFloat)rollDegrees;
 
-    CGFloat threshold = 20.0;
+    CGFloat threshold = self.rollWarningThresholdDegrees;
     self.imuRollAngleLabel.text = [NSString stringWithFormat:@"侧倾角 %+.0f°", self.currentRollDegrees];
     self.imuCrossView.transform = CGAffineTransformMakeRotation((CGFloat)(self.currentRollDegrees * M_PI / 180.0));
 
@@ -1354,6 +1395,7 @@
     if (self.pitchWarningActive == warningActive && self.imuLeftWarningView.hidden == !warningActive) {
         return;
     }
+    [self sampleWarningCoverageIfNeeded];
     self.pitchWarningActive = warningActive;
 
     void (^showBlock)(void) = ^{
@@ -1383,6 +1425,7 @@
     if (self.rollWarningActive == warningActive && self.imuTopWarningView.hidden == !warningActive) {
         return;
     }
+    [self sampleWarningCoverageIfNeeded];
     self.rollWarningActive = warningActive;
 
     void (^showBlock)(void) = ^{
@@ -1592,6 +1635,7 @@
 
     self.recordingDurationLabel.text = @"00:00.0";
     self.recordingDurationLabel.hidden = NO;
+    [self beginWarningCoverageTracking];
     [[CD3DGSCameraService shared] startRecording];
     if ([[CD3DGSCameraService shared] isRecording]) {
         self.isStartingRecording = NO;
@@ -1652,6 +1696,9 @@
         }
     }];
 
+
+    [self finalizeWarningCoverageTracking];
+
     [self.guidanceState completeCurrentStepWithVideoURL:videoURL];
     self.isRecordingFlowActive = NO;
     self.isFinishingCurrentRecording = NO;
@@ -1660,12 +1707,14 @@
     self.stepGifCollapsed = NO;
     [self updateGuidanceUI];
 
-    if (self.guidanceState.isComplete) {
-        CDRoomVideoReviewViewController *reviewVC = [[CDRoomVideoReviewViewController alloc] initWithRoom:[self demoPassedRoom]
-                                                                                                videoURLs:self.guidanceState.completedVideoURLs
-                                                                                      singleRoomDemoFlow:YES];
-        [self.navigationController pushViewController:reviewVC animated:YES];
-    }
+    [self presentWarningCoverageAlertWithCompletion:^{
+        if (self.guidanceState.isComplete) {
+            CDRoomVideoReviewViewController *reviewVC = [[CDRoomVideoReviewViewController alloc] initWithRoom:[self demoPassedRoom]
+                                                                                                    videoURLs:self.guidanceState.completedVideoURLs
+                                                                                          singleRoomDemoFlow:YES];
+            [self.navigationController pushViewController:reviewVC animated:YES];
+        }
+    }];
 }
 
 - (CDRoomItem *)demoPassedRoom {
@@ -1697,6 +1746,79 @@
                                                                    message:message
                                                             preferredStyle:UIAlertControllerStyleAlert];
     [alert addAction:[UIAlertAction actionWithTitle:@"确定" style:UIAlertActionStyleDefault handler:nil]];
+    [self presentViewController:alert animated:YES completion:nil];
+}
+
+- (void)beginWarningCoverageTracking {
+    self.warningCoverageAccumulatedSeconds = 0;
+    self.warningCoverageLastSampleTimestamp = CACurrentMediaTime();
+    self.warningCoverageTrackingActive = YES;
+    self.blurWarningActive = NO;
+}
+
+- (void)sampleWarningCoverageIfNeeded {
+    if (!self.warningCoverageTrackingActive) {
+        return;
+    }
+
+    NSTimeInterval now = CACurrentMediaTime();
+    NSTimeInterval last = self.warningCoverageLastSampleTimestamp;
+    if (last <= 0) {
+        self.warningCoverageLastSampleTimestamp = now;
+        return;
+    }
+
+    NSTimeInterval delta = MAX(0, now - last);
+    if (delta > 0 && [self isAnyWarningActive]) {
+        self.warningCoverageAccumulatedSeconds += delta;
+    }
+    self.warningCoverageLastSampleTimestamp = now;
+}
+
+- (void)finalizeWarningCoverageTracking {
+    if (!self.warningCoverageTrackingActive) {
+        return;
+    }
+    [self sampleWarningCoverageIfNeeded];
+    self.warningCoverageTrackingActive = NO;
+}
+
+- (BOOL)isAnyWarningActive {
+    return self.pitchWarningActive ||
+           self.rollWarningActive ||
+           self.angularSpeedWarningActive ||
+           self.movementWarningActive ||
+           self.blurWarningActive;
+}
+
+- (void)presentWarningCoverageAlertWithCompletion:(dispatch_block_t)completion {
+    NSTimeInterval totalSeconds = [CD3DGSCameraService shared].recordingDuration;
+    if (totalSeconds <= 0) {
+        totalSeconds = self.warningCoverageAccumulatedSeconds;
+    }
+    NSTimeInterval warningSeconds = MIN(self.warningCoverageAccumulatedSeconds, totalSeconds);
+    NSTimeInterval validSeconds = MAX(0, totalSeconds - warningSeconds);
+    CGFloat validPercent = totalSeconds > 0 ? (validSeconds / totalSeconds) * 100.0 : 100.0;
+    CGFloat warningPercent = totalSeconds > 0 ? (warningSeconds / totalSeconds) * 100.0 : 0;
+
+    NSString *message = [NSString stringWithFormat:@"有效拍摄占比 %.0f%%\n警示占比 %.0f%%\n警示时长 %.1fs / %.1fs",
+                         round(validPercent),
+                         round(warningPercent),
+                         warningSeconds,
+                         totalSeconds];
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"本次拍摄结果"
+                                                                   message:message
+                                                            preferredStyle:UIAlertControllerStyleAlert];
+    __weak typeof(self) weakSelf = self;
+    [alert addAction:[UIAlertAction actionWithTitle:@"确定"
+                                              style:UIAlertActionStyleDefault
+                                            handler:^(__unused UIAlertAction *action) {
+        if (completion) {
+            completion();
+        }
+        weakSelf.warningCoverageAccumulatedSeconds = 0;
+        weakSelf.warningCoverageLastSampleTimestamp = 0;
+    }]];
     [self presentViewController:alert animated:YES completion:nil];
 }
 
