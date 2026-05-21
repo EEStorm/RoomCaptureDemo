@@ -16,6 +16,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)moveToPreviousStep;
 - (void)moveToNextStep;
 - (void)completeCurrentStepWithVideoURL:(NSURL *)videoURL;
+- (void)completeCurrentStepWithoutVideo;
 
 @end
 

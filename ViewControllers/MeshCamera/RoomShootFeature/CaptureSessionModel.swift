@@ -28,6 +28,8 @@ final class CaptureSessionModel: ObservableObject {
     @Published var planeCoverageRatio: Double = 0
     @Published var skyboxCoverageRatio: Double = 0
     @Published var lastCompletedVideoURL: URL?
+    @Published var isRecordingPreparedForStart: Bool = false
+    @Published var didFinishWithoutVideo: Bool = false
 
     @Published var renderResetCounter: Int = 0
 
@@ -48,6 +50,7 @@ final class CaptureSessionModel: ObservableObject {
 
     private let recorder = VideoPoseRecorder()
     private let generatesReviewOnStop: Bool
+    private var isRecordingPrepared = false
 
     init(generatesReviewOnStop: Bool = true) {
         self.generatesReviewOnStop = generatesReviewOnStop
@@ -74,6 +77,7 @@ final class CaptureSessionModel: ObservableObject {
         guard !isRecording else { return }
         lastExportSummary = nil
         lastCompletedVideoURL = nil
+        didFinishWithoutVideo = false
         isPackaging = false
         isReviewPresented = false
         isGeneratingReview = false
@@ -82,14 +86,33 @@ final class CaptureSessionModel: ObservableObject {
         pendingExportForReview = nil
         pendingReviewSnapshot = nil
         pendingReviewMeshExport = nil
-        recorder.startNewRecording()
+        if !isRecordingPrepared {
+            recorder.startNewRecording()
+        }
+        isRecordingPrepared = false
+        isRecordingPreparedForStart = false
         isRecording = true
         UIApplication.shared.isIdleTimerDisabled = true
+    }
+
+    func prepareRecording(firstFrame frame: ARFrame) {
+        guard !isRecording, !isRecordingPrepared else { return }
+        recorder.startNewRecording()
+        isRecordingPrepared = true
+        isRecordingPreparedForStart = false
+        recorder.prepareForRecording(firstFrame: frame) { [weak self] success in
+            Task { @MainActor in
+                guard let self, self.isRecordingPrepared else { return }
+                self.isRecordingPreparedForStart = success
+            }
+        }
     }
 
     func stopRecording() {
         guard isRecording else { return }
         isRecording = false
+        isRecordingPrepared = false
+        isRecordingPreparedForStart = false
         UIApplication.shared.isIdleTimerDisabled = false
         isPackaging = true
 
@@ -114,6 +137,7 @@ final class CaptureSessionModel: ObservableObject {
                     }
                 case .failure(let error):
                     self?.lastExportSummary = "保存失败: \(error.localizedDescription)"
+                    self?.didFinishWithoutVideo = true
                     print("Export failed: \(error)")
                 }
             }
@@ -123,6 +147,8 @@ final class CaptureSessionModel: ObservableObject {
     func cancelRecording() {
         guard isRecording else { return }
         isRecording = false
+        isRecordingPrepared = false
+        isRecordingPreparedForStart = false
         UIApplication.shared.isIdleTimerDisabled = false
         isPackaging = false
     }

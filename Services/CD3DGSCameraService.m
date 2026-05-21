@@ -18,6 +18,7 @@ NSString * const CD3DGSCameraRecordingURLKey = @"CD3DGSCameraRecordingURLKey";
 @property (nonatomic, strong) NSTimer *recordingTimer;
 @property (nonatomic, strong) NSTimer *lockMonitorTimer;
 @property (nonatomic, strong) dispatch_queue_t videoDataOutputQueue;
+@property (nonatomic, strong) dispatch_queue_t sessionQueue;
 @property (nonatomic, strong) CD3DGSBlurMonitor *blurMonitor;
 @property (nonatomic, assign) NSInteger currentBlurState;
 @property (nonatomic, assign) NSUInteger blurAnalysisFrameCount;
@@ -56,6 +57,7 @@ NSString * const CD3DGSCameraRecordingURLKey = @"CD3DGSCameraRecordingURLKey";
         [self loadSettings];
         [self loadRecordedVideos];
         _blurAnalysisFrameCount = 0;
+        _sessionQueue = dispatch_queue_create("com.roomcapture.3dgs-session", DISPATCH_QUEUE_SERIAL);
         [[NSNotificationCenter defaultCenter] addObserver:self
                                                  selector:@selector(settingsDidChange:)
                                                      name:@"CDCameraSettingsDidChange"
@@ -401,20 +403,74 @@ NSString * const CD3DGSCameraRecordingURLKey = @"CD3DGSCameraRecordingURLKey";
 }
 
 - (void)startSession {
-    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
-        [self.captureSession startRunning];
-    });
-    dispatch_async(dispatch_get_main_queue(), ^{
-        [self startLockMonitorIfNeeded];
+    [self startSessionWithCompletion:nil];
+}
+
+- (void)startSessionWithCompletion:(void(^ _Nullable)(void))completion {
+    dispatch_async(self.sessionQueue, ^{
+        if (!self.captureSession.isRunning) {
+            [self.captureSession startRunning];
+        }
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self startLockMonitorIfNeeded];
+            if (completion) {
+                completion();
+            }
+        });
     });
 }
 
 - (void)stopSession {
-    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
-        [self.captureSession stopRunning];
+    [self stopSessionWithCompletion:nil];
+}
+
+- (void)stopSessionWithCompletion:(void(^ _Nullable)(void))completion {
+    dispatch_async(self.sessionQueue, ^{
+        if (self.captureSession.isRunning) {
+            [self.captureSession stopRunning];
+        }
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self stopLockMonitor];
+            if (completion) {
+                completion();
+            }
+        });
     });
-    dispatch_async(dispatch_get_main_queue(), ^{
-        [self stopLockMonitor];
+}
+
+- (void)teardownCameraWithCompletion:(void(^ _Nullable)(void))completion {
+    dispatch_async(self.sessionQueue, ^{
+        if (self.captureSession.isRunning) {
+            [self.captureSession stopRunning];
+        }
+
+        [self.captureSession beginConfiguration];
+        for (AVCaptureOutput *output in [self.captureSession.outputs copy]) {
+            [self.captureSession removeOutput:output];
+        }
+        for (AVCaptureInput *input in [self.captureSession.inputs copy]) {
+            [self.captureSession removeInput:input];
+        }
+        [self.captureSession commitConfiguration];
+
+        [self.videoDataOutput setSampleBufferDelegate:nil queue:NULL];
+        self.videoDataOutput = nil;
+        self.videoOutput = nil;
+        self.videoDevice = nil;
+        self.previewLayer = nil;
+        self.captureSession = nil;
+        self.videoDataOutputQueue = nil;
+        self.blurMonitor = nil;
+        self.currentBlurState = NSIntegerMin;
+        self.blurAnalysisFrameCount = 0;
+        self.currentVideoURL = nil;
+
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self stopLockMonitor];
+            if (completion) {
+                completion();
+            }
+        });
     });
 }
 

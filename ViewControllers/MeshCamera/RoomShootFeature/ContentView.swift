@@ -69,6 +69,7 @@ struct ContentView: View {
                 reviewMeshExportFolderPath: $model.reviewMeshExportFolderPath,
                 liveMeshPreviewStore: liveMeshPreviewStore,
                 showsMainMeshOverlay: showsMainMeshOverlay,
+                prewarmsMeshBeforeRecording: false,
                 onMotionUpdate: { linear, angular, tooFast in
                     model.handleMotion(linearSpeed: linear, angularSpeed: angular, isTooFast: tooFast)
                 },
@@ -91,6 +92,7 @@ struct ContentView: View {
                         liveTrajectoryPreviewStore.append(frame: frame, isRecording: model.isRecording)
                     }
                 },
+                onMeshAnchorReady: {},
                 onReviewSnapshotReady: { image in
                     model.handleReviewSnapshot(image)
                 },

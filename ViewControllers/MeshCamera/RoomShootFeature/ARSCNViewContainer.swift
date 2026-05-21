@@ -24,12 +24,14 @@ struct ARSCNViewContainer: UIViewRepresentable {
     @Binding var reviewMeshExportFolderPath: String?
     let liveMeshPreviewStore: LiveMeshPreviewSceneStore?
     let showsMainMeshOverlay: Bool
+    let prewarmsMeshBeforeRecording: Bool
 
     let onMotionUpdate: (Double, Double, Bool) -> Void
     let onPointCloudStatsUpdate: (Bool, Int, Int, Int) -> Void
     let onPlaneCoverageStatsUpdate: (Int, Double) -> Void
     let onSkyboxCoverageStatsUpdate: (Double) -> Void
     let onFrameForRecording: (ARFrame) -> Void
+    let onMeshAnchorReady: () -> Void
     let onReviewSnapshotReady: (UIImage) -> Void
     let onReviewMeshExportReady: (URL, Int, Int, Int) -> Void
 
@@ -42,10 +44,12 @@ struct ARSCNViewContainer: UIViewRepresentable {
             onPlaneCoverageStatsUpdate: onPlaneCoverageStatsUpdate,
             onSkyboxCoverageStatsUpdate: onSkyboxCoverageStatsUpdate,
             onFrameForRecording: onFrameForRecording,
+            onMeshAnchorReady: onMeshAnchorReady,
             onReviewSnapshotReady: onReviewSnapshotReady,
             onReviewMeshExportReady: onReviewMeshExportReady,
             liveMeshPreviewStore: liveMeshPreviewStore,
-            showsMainMeshOverlay: showsMainMeshOverlay
+            showsMainMeshOverlay: showsMainMeshOverlay,
+            prewarmsMeshBeforeRecording: prewarmsMeshBeforeRecording
         )
     }
 
@@ -76,6 +80,16 @@ struct ARSCNViewContainer: UIViewRepresentable {
         context.coordinator.handleReviewMeshExportIfNeeded(counter: reviewMeshExportRequestCounter, folderPath: reviewMeshExportFolderPath)
     }
 
+    static func dismantleUIView(_ uiView: ARSCNView, coordinator: Coordinator) {
+        // Ensure ARKit releases camera resources promptly when the view is removed.
+        uiView.isPlaying = false
+        uiView.rendersContinuously = false
+        uiView.delegate = nil
+        uiView.session.delegate = nil
+        uiView.session.pause()
+        uiView.scene = SCNScene()
+    }
+
     // MARK: - Coordinator
 
     final class Coordinator: NSObject, ARSCNViewDelegate, ARSessionDelegate {
@@ -87,10 +101,12 @@ struct ARSCNViewContainer: UIViewRepresentable {
         private let onPlaneCoverageStatsUpdate: (Int, Double) -> Void
         private let onSkyboxCoverageStatsUpdate: (Double) -> Void
         private let onFrameForRecording: (ARFrame) -> Void
+        private let onMeshAnchorReady: () -> Void
         private let onReviewSnapshotReady: (UIImage) -> Void
         private let onReviewMeshExportReady: (URL, Int, Int, Int) -> Void
         private let liveMeshPreviewStore: LiveMeshPreviewSceneStore?
         private let showsMainMeshOverlay: Bool
+        private let prewarmsMeshBeforeRecording: Bool
 
         var renderMode: RenderMode = .mesh {
             didSet {
@@ -111,7 +127,9 @@ struct ARSCNViewContainer: UIViewRepresentable {
                     freezeCurrentMeshAnchors()
                 }
                 DispatchQueue.main.async { [weak self] in
-                    self?.clearMeshNodes()
+                    if self?.prewarmsMeshBeforeRecording != true {
+                        self?.clearMeshNodes()
+                    }
                     self?.applyVisibility()
                 }
             }
@@ -136,7 +154,6 @@ struct ARSCNViewContainer: UIViewRepresentable {
         private var lastPlanePaintTimestamp: TimeInterval = 0
         private var lastSkyboxPaintTimestamp: TimeInterval = 0
         private var lastAppliedMode: RenderMode?
-        private var lastAppliedRecordingEnabled: Bool?
         private var lastReviewSnapshotCounter: Int = 0
         private var lastReviewMeshExportCounter: Int = 0
         private var frozenMeshAnchors: [ARMeshAnchor]?
@@ -149,10 +166,12 @@ struct ARSCNViewContainer: UIViewRepresentable {
             onPlaneCoverageStatsUpdate: @escaping (Int, Double) -> Void,
             onSkyboxCoverageStatsUpdate: @escaping (Double) -> Void,
             onFrameForRecording: @escaping (ARFrame) -> Void,
+            onMeshAnchorReady: @escaping () -> Void,
             onReviewSnapshotReady: @escaping (UIImage) -> Void,
             onReviewMeshExportReady: @escaping (URL, Int, Int, Int) -> Void,
             liveMeshPreviewStore: LiveMeshPreviewSceneStore?,
-            showsMainMeshOverlay: Bool
+            showsMainMeshOverlay: Bool,
+            prewarmsMeshBeforeRecording: Bool
         ) {
             _isRecording = isRecording
             _isMovingTooFast = isMovingTooFast
@@ -161,10 +180,12 @@ struct ARSCNViewContainer: UIViewRepresentable {
             self.onPlaneCoverageStatsUpdate = onPlaneCoverageStatsUpdate
             self.onSkyboxCoverageStatsUpdate = onSkyboxCoverageStatsUpdate
             self.onFrameForRecording = onFrameForRecording
+            self.onMeshAnchorReady = onMeshAnchorReady
             self.onReviewSnapshotReady = onReviewSnapshotReady
             self.onReviewMeshExportReady = onReviewMeshExportReady
             self.liveMeshPreviewStore = liveMeshPreviewStore
             self.showsMainMeshOverlay = showsMainMeshOverlay
+            self.prewarmsMeshBeforeRecording = prewarmsMeshBeforeRecording
 
             pointCloudNode.name = "pointCloud"
             depthCoverageNode.name = "depthCoverage"
@@ -191,15 +212,14 @@ struct ARSCNViewContainer: UIViewRepresentable {
             guard let view else { return }
 
             let modeChanged = (lastAppliedMode != mode)
-            let recordingChanged = (lastAppliedRecordingEnabled != recordingEnabled)
-            guard modeChanged || recordingChanged else { return }
+            guard modeChanged else { return }
 
             let config = ARWorldTrackingConfiguration()
             config.worldAlignment = .gravity
 
             switch mode {
             case .mesh:
-                if recordingEnabled, ARWorldTrackingConfiguration.supportsSceneReconstruction(.mesh) {
+                if ARWorldTrackingConfiguration.supportsSceneReconstruction(.mesh) {
                     config.sceneReconstruction = .mesh
                 }
                 if ARWorldTrackingConfiguration.supportsFrameSemantics(.sceneDepth) {
@@ -219,18 +239,8 @@ struct ARSCNViewContainer: UIViewRepresentable {
                 break
             }
 
-            var runOptions = options
-            if mode == .mesh, recordingChanged {
-                if recordingEnabled {
-                    runOptions.formUnion([.resetTracking, .removeExistingAnchors])
-                } else {
-                    runOptions.formUnion([.removeExistingAnchors])
-                }
-            }
-
-            view.session.run(config, options: runOptions)
+            view.session.run(config, options: options)
             lastAppliedMode = mode
-            lastAppliedRecordingEnabled = recordingEnabled
         }
 
         func handleResetIfNeeded(counter: Int) {
@@ -296,7 +306,7 @@ struct ARSCNViewContainer: UIViewRepresentable {
             skyboxNode.isHidden = (renderMode != .skyboxCoverage)
             rootNode?.enumerateChildNodes { node, _ in
                 if node.name == "mesh" {
-                    node.isHidden = (self.renderMode != .mesh || !self.recordingEnabled || !self.showsMainMeshOverlay)
+                    node.isHidden = (self.renderMode != .mesh || !self.shouldShowMeshOverlay)
                 }
             }
             for (_, state) in planeCoverage {
@@ -319,6 +329,10 @@ struct ARSCNViewContainer: UIViewRepresentable {
                 return
             }
             frozenMeshAnchors = anchors
+        }
+
+        private var shouldShowMeshOverlay: Bool {
+            showsMainMeshOverlay && (recordingEnabled || prewarmsMeshBeforeRecording)
         }
 
         // MARK: ARSessionDelegate (速度监控 + 录制)
@@ -605,7 +619,12 @@ struct ARSCNViewContainer: UIViewRepresentable {
 
         private func makeMeshGeometry(for meshAnchor: ARMeshAnchor) -> SCNGeometry {
             let geometry = MeshGeometryBuilder.buildGeometry(from: meshAnchor.geometry)
-            guard renderMode == .mesh, recordingEnabled else { return geometry }
+            if renderMode == .mesh {
+                DispatchQueue.main.async { [weak self] in
+                    self?.onMeshAnchorReady()
+                }
+            }
+            guard renderMode == .mesh, recordingEnabled, liveMeshPreviewStore != nil else { return geometry }
 
             DispatchQueue.main.async { [weak self] in
                 self?.liveMeshPreviewStore?.upsert(
@@ -631,7 +650,7 @@ struct ARSCNViewContainer: UIViewRepresentable {
                 let node = SCNNode()
                 node.name = "mesh"
                 node.geometry = makeMeshGeometry(for: meshAnchor)
-                node.isHidden = !recordingEnabled || !showsMainMeshOverlay
+                node.isHidden = !shouldShowMeshOverlay
                 return node
             }
 
@@ -659,15 +678,8 @@ struct ARSCNViewContainer: UIViewRepresentable {
                     }
                     return
                 }
-                guard recordingEnabled else {
-                    if node.name == "mesh" {
-                        node.geometry = nil
-                        node.isHidden = true
-                    }
-                    return
-                }
                 node.name = "mesh"
-                node.isHidden = !showsMainMeshOverlay
+                node.isHidden = !shouldShowMeshOverlay
                 node.geometry = makeMeshGeometry(for: meshAnchor)
                 return
             }

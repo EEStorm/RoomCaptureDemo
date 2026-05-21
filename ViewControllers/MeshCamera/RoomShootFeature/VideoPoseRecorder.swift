@@ -23,7 +23,9 @@ final class VideoPoseRecorder {
         case missingFirstFrame
     }
 
-    private let queue = DispatchQueue(label: "VideoPoseRecorder.queue")
+    // Use a lower QoS so post-stop encoding/JSON work doesn't starve camera preview / UI.
+    private let queue = DispatchQueue(label: "VideoPoseRecorder.queue", qos: .utility)
+    private let stateLock = NSLock()
 
     private var writer: AVAssetWriter?
     private var writerInput: AVAssetWriterInput?
@@ -35,6 +37,12 @@ final class VideoPoseRecorder {
     private var outputVideoURL: URL?
     private var outputJSONURL: URL?
     private var recordingTransform: CGAffineTransform?
+    private var preparedFrameTimestamp: TimeInterval?
+    private var lastAppendedFrameTimestamp: TimeInterval?
+    private var pendingFrameCount = 0
+    private let minimumFrameInterval: TimeInterval = 1.0 / 15.0
+    private let maximumPendingFrameCount = 3
+    private var didPrepareWriter = false
 
     func startNewRecording() {
         queue.sync {
@@ -44,6 +52,10 @@ final class VideoPoseRecorder {
             writerInput = nil
             adaptor = nil
             recordingTransform = nil
+            preparedFrameTimestamp = nil
+            lastAppendedFrameTimestamp = nil
+            pendingFrameCount = 0
+            didPrepareWriter = false
 
             let folder = Self.makeNewOutputFolder()
             let videoURL = folder.appendingPathComponent("frames.mp4")
@@ -54,12 +66,51 @@ final class VideoPoseRecorder {
         }
     }
 
-    func append(frame: ARFrame) {
+    func prepareForRecording(firstFrame frame: ARFrame, completion: @escaping (Bool) -> Void) {
         queue.async {
+            guard !self.didPrepareWriter else {
+                DispatchQueue.main.async { completion(true) }
+                return
+            }
+            do {
+                try self.ensureWriterConfiguredIfNeeded(firstFrame: frame)
+                try self.startWriterIfNeeded(at: frame.timestamp)
+                self.didPrepareWriter = true
+                DispatchQueue.main.async { completion(true) }
+            } catch {
+                print("Recorder prepare failed: \(error)")
+                DispatchQueue.main.async { completion(false) }
+            }
+        }
+    }
+
+    func append(frame: ARFrame) {
+        let timestamp = frame.timestamp
+        stateLock.lock()
+        if let lastAppendedFrameTimestamp, timestamp - lastAppendedFrameTimestamp < minimumFrameInterval {
+            stateLock.unlock()
+            return
+        }
+        if pendingFrameCount >= maximumPendingFrameCount {
+            stateLock.unlock()
+            return
+        }
+        pendingFrameCount += 1
+        stateLock.unlock()
+
+        queue.async {
+            defer {
+                self.stateLock.lock()
+                self.pendingFrameCount = max(0, self.pendingFrameCount - 1)
+                self.stateLock.unlock()
+            }
             do {
                 try self.ensureWriterConfiguredIfNeeded(firstFrame: frame)
                 let didAppend = try self.appendVideoFrame(frame: frame)
                 if didAppend {
+                    self.stateLock.lock()
+                    self.lastAppendedFrameTimestamp = frame.timestamp
+                    self.stateLock.unlock()
                     self.appendPose(frame: frame)
                 }
             } catch {
@@ -89,7 +140,6 @@ final class VideoPoseRecorder {
 
                 do {
                     let encoder = JSONEncoder()
-                    encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
                     let data = try encoder.encode(self.poses)
                     try data.write(to: jsonURL, options: [.atomic])
 
@@ -129,7 +179,7 @@ final class VideoPoseRecorder {
             AVVideoWidthKey: width,
             AVVideoHeightKey: height,
             AVVideoCompressionPropertiesKey: [
-                AVVideoAverageBitRateKey: 20_000_000,
+                AVVideoAverageBitRateKey: 12_000_000,
                 AVVideoMaxKeyFrameIntervalKey: 30,
             ],
         ]
@@ -152,7 +202,7 @@ final class VideoPoseRecorder {
                 AVVideoWidthKey: width,
                 AVVideoHeightKey: height,
                 AVVideoCompressionPropertiesKey: [
-                    AVVideoAverageBitRateKey: 16_000_000,
+                    AVVideoAverageBitRateKey: 10_000_000,
                     AVVideoMaxKeyFrameIntervalKey: 30,
                 ],
             ]
@@ -190,11 +240,7 @@ final class VideoPoseRecorder {
         }
 
         let time = CMTime(seconds: frame.timestamp, preferredTimescale: 600)
-        if firstFrameTime == nil {
-            firstFrameTime = time
-            writer.startWriting()
-            writer.startSession(atSourceTime: time)
-        }
+        try startWriterIfNeeded(at: frame.timestamp)
 
         guard writer.status != .failed else {
             throw RecorderError.writerFailed(writer.error?.localizedDescription ?? "Unknown")
@@ -204,6 +250,19 @@ final class VideoPoseRecorder {
 
         let buffer = frame.capturedImage
         return adaptor.append(buffer, withPresentationTime: time)
+    }
+
+    private func startWriterIfNeeded(at timestamp: TimeInterval) throws {
+        guard let writer else {
+            throw RecorderError.writerNotReady
+        }
+        guard firstFrameTime == nil else { return }
+
+        let time = CMTime(seconds: timestamp, preferredTimescale: 600)
+        firstFrameTime = time
+        preparedFrameTimestamp = timestamp
+        writer.startWriting()
+        writer.startSession(atSourceTime: time)
     }
 
     private func appendPose(frame: ARFrame) {

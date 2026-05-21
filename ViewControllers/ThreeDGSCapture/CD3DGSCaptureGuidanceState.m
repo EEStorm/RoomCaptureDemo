@@ -84,6 +84,19 @@
     [self updateDerivedState];
 }
 
+- (void)completeCurrentStepWithoutVideo {
+    if (self.isComplete) {
+        return;
+    }
+    if (self.currentStepIndex >= (NSInteger)self.instructions.count - 1) {
+        self.isComplete = YES;
+        [self updateDerivedState];
+        return;
+    }
+    self.currentStepIndex += 1;
+    [self updateDerivedState];
+}
+
 - (void)updateDerivedState {
     self.currentInstruction = self.instructions[(NSUInteger)self.currentStepIndex];
     self.guideVideoResourceName = self.guideVideoResourceNames[(NSUInteger)self.currentStepIndex];
