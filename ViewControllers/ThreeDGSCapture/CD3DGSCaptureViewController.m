@@ -16,9 +16,9 @@ static NSString * const CD3DGSMeshStepCaptureDidFinishNotification = @"CD3DGSMes
 static NSString * const CD3DGSMeshStepCaptureDidBecomeReadyNotification = @"CD3DGSMeshStepCaptureDidBecomeReadyNotification";
 static NSString * const CD3DGSMeshStepCaptureDidPrepareRecordingNotification = @"CD3DGSMeshStepCaptureDidPrepareRecordingNotification";
 static NSString * const CD3DGSMeshStepCaptureVideoURLUserInfoKey = @"videoURL";
-static NSTimeInterval const CD3DGSMeshStepMinimumPreparationDuration = 3.0;
+static NSTimeInterval const CD3DGSMeshStepMinimumPreparationDuration = 1.5;
 static NSTimeInterval const CD3DGSMeshStepOverlayFadeDuration = 0.25;
-static NSTimeInterval const CD3DGSMeshStepStartRecordingAfterOverlayDelay = 0.35;
+static NSTimeInterval const CD3DGSMeshStepRevealAfterRecordingStartDelay = 0.3;
 static NSTimeInterval const CD3DGSMeshStepCameraRecoveryDelay = 1.5;
 static NSTimeInterval const CD3DGSMeshStepCameraWarmupDelay = 0.5;
 
@@ -72,6 +72,8 @@ static NSTimeInterval const CD3DGSMeshStepCameraWarmupDelay = 0.5;
 @property (nonatomic, strong) UIActivityIndicatorView *meshPreparationActivityIndicator;
 @property (nonatomic, strong) UILabel *meshPreparationTitleLabel;
 @property (nonatomic, strong) UILabel *meshPreparationSubtitleLabel;
+@property (nonatomic, strong) UIProgressView *meshPreparationProgressView;
+@property (nonatomic, assign) NSInteger meshPreparationStatusRank;
 @property (nonatomic, strong) UIView *guideVideoOverlayView;
 @property (nonatomic, strong) UIView *guideVideoFrameView;
 @property (nonatomic, strong) UILabel *guideVideoTitleLabel;
@@ -292,7 +294,7 @@ static NSTimeInterval const CD3DGSMeshStepCameraWarmupDelay = 0.5;
     self.guideVideoOverlayView.frame = self.view.bounds;
     self.meshPreparationOverlayView.frame = self.view.bounds;
     CGFloat preparationCardWidth = MIN(screenWidth - 56.0, 320.0);
-    CGFloat preparationCardHeight = 172.0;
+    CGFloat preparationCardHeight = 190.0;
     CGFloat preparationCardX = (screenWidth - preparationCardWidth) / 2.0;
     CGFloat preparationCardY = (self.view.bounds.size.height - preparationCardHeight) / 2.0;
     UIView *preparationCardView = [self.meshPreparationOverlayView viewWithTag:4100];
@@ -300,6 +302,7 @@ static NSTimeInterval const CD3DGSMeshStepCameraWarmupDelay = 0.5;
     self.meshPreparationActivityIndicator.frame = CGRectMake((preparationCardWidth - 36.0) / 2.0, 26.0, 36.0, 36.0);
     self.meshPreparationTitleLabel.frame = CGRectMake(18.0, 78.0, preparationCardWidth - 36.0, 28.0);
     self.meshPreparationSubtitleLabel.frame = CGRectMake(24.0, 112.0, preparationCardWidth - 48.0, 44.0);
+    self.meshPreparationProgressView.frame = CGRectMake(28.0, 164.0, preparationCardWidth - 56.0, 4.0);
 
     CGFloat guideWidth = MIN(screenWidth - 48, 360);
     CGFloat guideHeight = guideWidth * 9.0 / 16.0;
@@ -538,7 +541,7 @@ static NSTimeInterval const CD3DGSMeshStepCameraWarmupDelay = 0.5;
 
 - (void)setupMeshPreparationOverlay {
     self.meshPreparationOverlayView = [[UIView alloc] initWithFrame:self.view.bounds];
-    self.meshPreparationOverlayView.backgroundColor = [[UIColor blackColor] colorWithAlphaComponent:0.72];
+    self.meshPreparationOverlayView.backgroundColor = [[UIColor blackColor] colorWithAlphaComponent:0.96];
     self.meshPreparationOverlayView.hidden = YES;
     self.meshPreparationOverlayView.alpha = 0;
     self.meshPreparationOverlayView.userInteractionEnabled = YES;
@@ -546,7 +549,7 @@ static NSTimeInterval const CD3DGSMeshStepCameraWarmupDelay = 0.5;
 
     UIView *cardView = [[UIView alloc] initWithFrame:CGRectZero];
     cardView.tag = 4100;
-    cardView.backgroundColor = [[UIColor colorWithWhite:0.06 alpha:1.0] colorWithAlphaComponent:0.88];
+    cardView.backgroundColor = [UIColor colorWithWhite:0.06 alpha:0.96];
     cardView.layer.cornerRadius = 18.0;
     cardView.layer.borderWidth = 1.0;
     cardView.layer.borderColor = [[UIColor whiteColor] colorWithAlphaComponent:0.16].CGColor;
@@ -558,19 +561,27 @@ static NSTimeInterval const CD3DGSMeshStepCameraWarmupDelay = 0.5;
     [cardView addSubview:self.meshPreparationActivityIndicator];
 
     self.meshPreparationTitleLabel = [[UILabel alloc] initWithFrame:CGRectZero];
-    self.meshPreparationTitleLabel.text = @"正在启动 Mesh 扫描";
+    self.meshPreparationTitleLabel.text = @"准备进入空间扫描";
     self.meshPreparationTitleLabel.textColor = [UIColor whiteColor];
     self.meshPreparationTitleLabel.font = [UIFont systemFontOfSize:18 weight:UIFontWeightSemibold];
     self.meshPreparationTitleLabel.textAlignment = NSTextAlignmentCenter;
     [cardView addSubview:self.meshPreparationTitleLabel];
 
     self.meshPreparationSubtitleLabel = [[UILabel alloc] initWithFrame:CGRectZero];
-    self.meshPreparationSubtitleLabel.text = @"正在初始化 ARKit 相机流和空间网格，请保持手机稳定";
+    self.meshPreparationSubtitleLabel.text = @"正在准备扫描环境，请保持手机稳定";
     self.meshPreparationSubtitleLabel.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.78];
     self.meshPreparationSubtitleLabel.font = [UIFont systemFontOfSize:14 weight:UIFontWeightMedium];
     self.meshPreparationSubtitleLabel.textAlignment = NSTextAlignmentCenter;
     self.meshPreparationSubtitleLabel.numberOfLines = 2;
     [cardView addSubview:self.meshPreparationSubtitleLabel];
+
+    self.meshPreparationProgressView = [[UIProgressView alloc] initWithProgressViewStyle:UIProgressViewStyleDefault];
+    self.meshPreparationProgressView.trackTintColor = [[UIColor whiteColor] colorWithAlphaComponent:0.18];
+    self.meshPreparationProgressView.progressTintColor = [UIColor colorWithRed:0.20 green:0.48 blue:1.00 alpha:1.00];
+    self.meshPreparationProgressView.layer.cornerRadius = 2.0;
+    self.meshPreparationProgressView.clipsToBounds = YES;
+    self.meshPreparationProgressView.progress = 0;
+    [cardView addSubview:self.meshPreparationProgressView];
 }
 
 - (void)setupPitchIMUOverlay {
@@ -1744,7 +1755,7 @@ static NSTimeInterval const CD3DGSMeshStepCameraWarmupDelay = 0.5;
 - (void)beginMeshStepCapture {
     Class hostClass = NSClassFromString(@"CD3DGSMeshStepInlineCaptureViewController");
     if (!hostClass) {
-        [self showAlert:@"Mesh补扫不可用" message:@"当前版本未找到 ARKit Mesh 采集页面"];
+        [self showAlert:@"空间扫描暂不可用" message:@"当前版本未找到空间扫描页面"];
         return;
     }
 
@@ -1755,6 +1766,8 @@ static NSTimeInterval const CD3DGSMeshStepCameraWarmupDelay = 0.5;
     self.isMeshStepRecordingPrepared = NO;
     self.isMeshStepRecording = NO;
     self.isMeshStepHostAttached = NO;
+    self.meshPreparationStatusRank = 0;
+    self.meshPreparationProgressView.progress = 0;
     self.meshStepPreparationStartDate = [NSDate date];
     self.meshStepRecordingStartDate = nil;
     self.recordingDurationLabel.hidden = YES;
@@ -1778,19 +1791,28 @@ static NSTimeInterval const CD3DGSMeshStepCameraWarmupDelay = 0.5;
         [hostVC didMoveToParentViewController:self];
         self.meshStepInlineViewController = hostVC;
         self.isMeshStepHostAttached = YES;
-        self.meshPreparationSubtitleLabel.text = @"正在生成 Mesh 网格并稳定相机流，准备完成后自动开始";
+        [self updateMeshPreparationSubtitle:@"正在识别房间结构，即将开始扫描" progress:0.45 rank:1];
         [self refreshCaptureChromeZOrder];
         [self updateGuidanceUI];
     }];
 }
 
 - (void)showMeshPreparationOverlay {
-    self.meshPreparationTitleLabel.text = @"正在启动 Mesh 扫描";
-    self.meshPreparationSubtitleLabel.text = @"正在释放普通相机并预热 ARKit / Mesh，准备完成后自动开始";
+    self.meshPreparationTitleLabel.text = @"准备进入空间扫描";
+    [self updateMeshPreparationSubtitle:@"正在切换到空间扫描模式，请保持手机稳定" progress:0.15 rank:0];
     [self.meshPreparationActivityIndicator startAnimating];
     self.meshPreparationOverlayView.hidden = NO;
     self.meshPreparationOverlayView.alpha = 1.0;
     [self refreshCaptureChromeZOrder];
+}
+
+- (void)updateMeshPreparationSubtitle:(NSString *)subtitle progress:(float)progress rank:(NSInteger)rank {
+    if (rank < self.meshPreparationStatusRank) {
+        return;
+    }
+    self.meshPreparationStatusRank = rank;
+    self.meshPreparationSubtitleLabel.text = subtitle;
+    [self.meshPreparationProgressView setProgress:progress animated:YES];
 }
 
 - (void)hideMeshPreparationOverlay {
@@ -1821,8 +1843,9 @@ static NSTimeInterval const CD3DGSMeshStepCameraWarmupDelay = 0.5;
 }
 
 - (void)showMeshCameraRecoveryOverlay {
-    self.meshPreparationTitleLabel.text = @"正在恢复普通拍摄";
-    self.meshPreparationSubtitleLabel.text = @"正在释放 Mesh 扫描资源并重新启动相机，请稍候";
+    self.meshPreparationStatusRank = 0;
+    self.meshPreparationTitleLabel.text = @"空间扫描完成";
+    [self updateMeshPreparationSubtitle:@"正在准备下一步拍摄，请稍候" progress:0.45 rank:0];
     [self.meshPreparationActivityIndicator startAnimating];
     self.meshPreparationOverlayView.hidden = NO;
     self.meshPreparationOverlayView.alpha = 1.0;
@@ -1842,6 +1865,7 @@ static NSTimeInterval const CD3DGSMeshStepCameraWarmupDelay = 0.5;
         return;
     }
     self.isMeshStepReady = YES;
+    [self updateMeshPreparationSubtitle:@"已识别房间结构，正在完成准备" progress:0.80 rank:2];
     [self attemptStartPreparedMeshStepRecording];
 }
 
@@ -1850,6 +1874,7 @@ static NSTimeInterval const CD3DGSMeshStepCameraWarmupDelay = 0.5;
         return;
     }
     self.isMeshStepRecordingPrepared = YES;
+    [self updateMeshPreparationSubtitle:@"准备完成，马上开始拍摄" progress:0.92 rank:3];
     [self attemptStartPreparedMeshStepRecording];
 }
 
@@ -1868,25 +1893,24 @@ static NSTimeInterval const CD3DGSMeshStepCameraWarmupDelay = 0.5;
         return;
     }
 
-    self.meshPreparationSubtitleLabel.text = @"Mesh 已就绪，正在开始录制";
-    __weak typeof(self) weakSelf = self;
-    [self hideMeshPreparationOverlayAnimated:YES completion:^{
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(CD3DGSMeshStepStartRecordingAfterOverlayDelay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-            __strong typeof(weakSelf) self = weakSelf;
-            if (!self || !self.isPreparingMeshStep || !self.meshStepInlineViewController) {
-                return;
-            }
+    [self updateMeshPreparationSubtitle:@"准备完成，马上开始拍摄" progress:1.0 rank:4];
+    self.isPreparingMeshStep = NO;
+    self.isMeshStepRecording = YES;
+    self.meshStepRecordingStartDate = [NSDate date];
+    self.recordingDurationLabel.text = @"00:00.0";
+    self.recordingDurationLabel.hidden = NO;
+    [self.meshStepInlineViewController startRecording];
+    [self refreshCaptureChromeZOrder];
+    [self updateGuidanceUI];
 
-            self.isPreparingMeshStep = NO;
-            self.isMeshStepRecording = YES;
-            self.meshStepRecordingStartDate = [NSDate date];
-            self.recordingDurationLabel.text = @"00:00.0";
-            self.recordingDurationLabel.hidden = NO;
-            [self.meshStepInlineViewController startRecording];
-            [self refreshCaptureChromeZOrder];
-            [self updateGuidanceUI];
-        });
-    }];
+    __weak typeof(self) weakSelf = self;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(CD3DGSMeshStepRevealAfterRecordingStartDelay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        __strong typeof(weakSelf) self = weakSelf;
+        if (!self || !self.isMeshStepRecording || !self.meshStepInlineViewController) {
+            return;
+        }
+        [self hideMeshPreparationOverlayAnimated:YES completion:nil];
+    });
 }
 
 - (void)stopMeshStepCaptureAndDiscard:(BOOL)discard {

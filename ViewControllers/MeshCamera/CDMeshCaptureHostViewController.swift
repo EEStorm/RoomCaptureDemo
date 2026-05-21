@@ -231,7 +231,7 @@ private struct CD3DGSMeshStepInlineView: View {
             .ignoresSafeArea()
 
             VStack(spacing: 6) {
-                Text(model.renderMode == .mesh ? "Mesh 扫描中" : model.renderMode.rawValue)
+                Text("空间扫描中")
                     .font(.headline.weight(.semibold))
                     .foregroundStyle(.white)
                 Text(statusText)
@@ -255,14 +255,14 @@ private struct CD3DGSMeshStepInlineView: View {
 
     private var statusText: String {
         if model.renderMode == .mesh {
-            return "移动手机扫描墙面、角落和家具遮挡区"
+            return "缓慢移动手机，尽量覆盖墙面、角落和家具周边"
         }
         if model.renderMode == .planeCoverage {
-            return String(format: "平面覆盖 %.0f%%，非 LiDAR 设备将降级显示", model.planeCoverageRatio * 100)
+            return String(format: "已覆盖 %.0f%%，请继续缓慢移动手机", model.planeCoverageRatio * 100)
         }
         if model.renderMode == .skyboxCoverage {
-            return String(format: "方向覆盖 %.0f%%，非 LiDAR 设备将降级显示", model.skyboxCoverageRatio * 100)
+            return String(format: "已覆盖 %.0f%%，请继续覆盖房间四周", model.skyboxCoverageRatio * 100)
         }
-        return "当前设备不支持真实 Mesh，已降级为可用覆盖模式"
+        return "当前设备将使用兼容扫描模式，请按提示缓慢移动"
     }
 }

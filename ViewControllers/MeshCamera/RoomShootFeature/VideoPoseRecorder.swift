@@ -21,6 +21,7 @@ final class VideoPoseRecorder {
         case writerNotReady
         case writerFailed(String)
         case missingFirstFrame
+        case insufficientContent
     }
 
     // Use a lower QoS so post-stop encoding/JSON work doesn't starve camera preview / UI.
@@ -38,10 +39,15 @@ final class VideoPoseRecorder {
     private var outputJSONURL: URL?
     private var recordingTransform: CGAffineTransform?
     private var preparedFrameTimestamp: TimeInterval?
+    private var recordingStartFrameTimestamp: TimeInterval?
     private var lastAppendedFrameTimestamp: TimeInterval?
+    private var firstAppendedFrameTimestamp: TimeInterval?
+    private var appendedFrameCount = 0
     private var pendingFrameCount = 0
     private let minimumFrameInterval: TimeInterval = 1.0 / 15.0
     private let maximumPendingFrameCount = 3
+    private let minimumContentDuration: TimeInterval = 1.0
+    private let minimumContentFrameCount = 8
     private var didPrepareWriter = false
 
     func startNewRecording() {
@@ -53,7 +59,10 @@ final class VideoPoseRecorder {
             adaptor = nil
             recordingTransform = nil
             preparedFrameTimestamp = nil
+            recordingStartFrameTimestamp = nil
             lastAppendedFrameTimestamp = nil
+            firstAppendedFrameTimestamp = nil
+            appendedFrameCount = 0
             pendingFrameCount = 0
             didPrepareWriter = false
 
@@ -109,7 +118,11 @@ final class VideoPoseRecorder {
                 let didAppend = try self.appendVideoFrame(frame: frame)
                 if didAppend {
                     self.stateLock.lock()
+                    if self.firstAppendedFrameTimestamp == nil {
+                        self.firstAppendedFrameTimestamp = frame.timestamp
+                    }
                     self.lastAppendedFrameTimestamp = frame.timestamp
+                    self.appendedFrameCount += 1
                     self.stateLock.unlock()
                     self.appendPose(frame: frame)
                 }
@@ -139,6 +152,14 @@ final class VideoPoseRecorder {
                 }
 
                 do {
+                    let duration = (self.lastAppendedFrameTimestamp ?? 0) - (self.firstAppendedFrameTimestamp ?? 0)
+                    guard self.appendedFrameCount >= self.minimumContentFrameCount, duration >= self.minimumContentDuration else {
+                        try? FileManager.default.removeItem(at: videoURL)
+                        try? FileManager.default.removeItem(at: jsonURL)
+                        completion(.failure(RecorderError.insufficientContent))
+                        return
+                    }
+
                     let encoder = JSONEncoder()
                     let data = try encoder.encode(self.poses)
                     try data.write(to: jsonURL, options: [.atomic])
@@ -239,7 +260,6 @@ final class VideoPoseRecorder {
             throw RecorderError.writerNotReady
         }
 
-        let time = CMTime(seconds: frame.timestamp, preferredTimescale: 600)
         try startWriterIfNeeded(at: frame.timestamp)
 
         guard writer.status != .failed else {
@@ -248,8 +268,14 @@ final class VideoPoseRecorder {
 
         guard input.isReadyForMoreMediaData else { return false }
 
+        if recordingStartFrameTimestamp == nil {
+            recordingStartFrameTimestamp = frame.timestamp
+        }
+        let sessionStart = firstFrameTime ?? CMTime(seconds: frame.timestamp, preferredTimescale: 600)
+        let relativeSeconds = frame.timestamp - (recordingStartFrameTimestamp ?? frame.timestamp)
+        let presentationTime = sessionStart + CMTime(seconds: max(0, relativeSeconds), preferredTimescale: 600)
         let buffer = frame.capturedImage
-        return adaptor.append(buffer, withPresentationTime: time)
+        return adaptor.append(buffer, withPresentationTime: presentationTime)
     }
 
     private func startWriterIfNeeded(at timestamp: TimeInterval) throws {
@@ -267,8 +293,9 @@ final class VideoPoseRecorder {
 
     private func appendPose(frame: ARFrame) {
         let camera = frame.camera
+        let relativeTimestamp = max(0, frame.timestamp - (recordingStartFrameTimestamp ?? frame.timestamp))
         let sample = CameraPoseSample(
-            timestamp: frame.timestamp,
+            timestamp: relativeTimestamp,
             transformColumns: camera.transform.columnsArray,
             intrinsicsColumns: camera.intrinsics.columnsArray
         )
