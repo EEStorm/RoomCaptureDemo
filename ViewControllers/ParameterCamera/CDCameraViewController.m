@@ -351,10 +351,17 @@
     // Update resolution & fps label
     UILabel *resLabel = [self.topBar viewWithTag:300];
     NSInteger resolution = [defaults integerForKey:@"CDSettingsResolution"];
-    NSArray *resolutions = @[@"720P", @"1080P", @"4K"];
+    NSString *resolutionText = @"1080P";
+    if (resolution == 540 || resolution == 720 || resolution == 1080) {
+        resolutionText = [NSString stringWithFormat:@"%ldP", (long)resolution];
+    } else if (resolution == 0) {
+        resolutionText = @"720P";
+    } else if (resolution == 1 || resolution == 2) {
+        resolutionText = @"1080P";
+    }
     NSInteger frameRate = [defaults integerForKey:@"CDSettingsFrameRate"];
     if (frameRate == 0) frameRate = 30;
-    resLabel.text = [NSString stringWithFormat:@"%@ %ldfps", resolutions[resolution], (long)frameRate];
+    resLabel.text = [NSString stringWithFormat:@"%@ %ldfps", resolutionText, (long)frameRate];
 
     // Update params label
     NSInteger cameraLens = [defaults integerForKey:@"CDSettingsCameraLens"];

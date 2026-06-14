@@ -17,6 +17,7 @@ NSString * const CDSettingsIMUAngularSpeedThresholdDegreesPerSecondKey = @"CDSet
 NSString * const CDSettingsIMUMovementSpeedThresholdMetersPerSecondKey = @"CDSettingsIMUMovementSpeedThresholdMetersPerSecond";
 NSString * const CDSettingsBlurClearThresholdKey = @"CDSettingsBlurClearThreshold";
 NSString * const CDSettingsBlurSoftThresholdKey = @"CDSettingsBlurSoftThreshold";
+NSString * const CDSettingsVideoBitrateKbpsKey = @"CDSettingsVideoBitrateKbps";
 
 @interface CDCameraSettingsViewController () <UITableViewDataSource, UITableViewDelegate>
 
@@ -30,6 +31,7 @@ NSString * const CDSettingsBlurSoftThresholdKey = @"CDSettingsBlurSoftThreshold"
 @property (nonatomic, assign) float autoLockSettleSeconds;
 @property (nonatomic, assign) NSInteger resolution;
 @property (nonatomic, assign) NSInteger cameraLens;
+@property (nonatomic, assign) NSInteger videoBitrateKbps;
 @property (nonatomic, assign) BOOL imuSectionExpanded;
 @property (nonatomic, assign) BOOL qualitySectionExpanded;
 @property (nonatomic, assign) CGFloat imuPitchThresholdDegrees;
@@ -86,6 +88,31 @@ NSString * const CDSettingsBlurSoftThresholdKey = @"CDSettingsBlurSoftThreshold"
     return value > 0 ? value : fallback;
 }
 
+- (NSInteger)normalizedResolutionFromDefaults:(NSUserDefaults *)defaults {
+    id value = [defaults objectForKey:kCDSettingsResolution];
+    if (!value) {
+        return 1080;
+    }
+
+    NSInteger raw = [defaults integerForKey:kCDSettingsResolution];
+    if (raw == 540 || raw == 720 || raw == 1080) {
+        return raw;
+    }
+
+    // Previous versions stored resolution as an index: 0=720P, 1=1080P, 2=4K.
+    if (raw == 0) return 720;
+    if (raw == 1) return 1080;
+    if (raw == 2) return 1080;
+    return 1080;
+}
+
+- (NSString *)bitrateDisplayText {
+    if (self.videoBitrateKbps <= 0) {
+        return @"自适应";
+    }
+    return [NSString stringWithFormat:@"%ld kbps", (long)self.videoBitrateKbps];
+}
+
 - (void)setupUI {
     self.tableView = [[UITableView alloc] initWithFrame:CGRectZero style:UITableViewStyleGrouped];
     self.tableView.translatesAutoresizingMaskIntoConstraints = NO;
@@ -127,10 +154,12 @@ NSString * const CDSettingsBlurSoftThresholdKey = @"CDSettingsBlurSoftThreshold"
     self.autoLockSettleSeconds = [defaults floatForKey:kCDSettingsAutoLockSettleSeconds];
     if (self.autoLockSettleSeconds <= 0) self.autoLockSettleSeconds = 1.0f;
 
-    self.resolution = [defaults integerForKey:kCDSettingsResolution];
-    if (self.resolution == 0) self.resolution = 1; // 1 = 1080P
+    self.resolution = [self normalizedResolutionFromDefaults:defaults];
 
     self.cameraLens = [defaults integerForKey:kCDSettingsCameraLens];
+
+    id bitrateObj = [defaults objectForKey:CDSettingsVideoBitrateKbpsKey];
+    self.videoBitrateKbps = bitrateObj ? [defaults integerForKey:CDSettingsVideoBitrateKbpsKey] : 3000;
 
     self.imuPitchThresholdDegrees = [self defaultValueForKey:CDSettingsIMUPitchThresholdDegreesKey fallback:8.0];
     self.imuRollThresholdDegrees = [self defaultValueForKey:CDSettingsIMURollThresholdDegreesKey fallback:20.0];
@@ -150,6 +179,7 @@ NSString * const CDSettingsBlurSoftThresholdKey = @"CDSettingsBlurSoftThreshold"
     [defaults setFloat:self.autoLockSettleSeconds forKey:kCDSettingsAutoLockSettleSeconds];
     [defaults setInteger:self.resolution forKey:kCDSettingsResolution];
     [defaults setInteger:self.cameraLens forKey:kCDSettingsCameraLens];
+    [defaults setInteger:self.videoBitrateKbps forKey:CDSettingsVideoBitrateKbpsKey];
     [defaults setDouble:self.imuPitchThresholdDegrees forKey:CDSettingsIMUPitchThresholdDegreesKey];
     [defaults setDouble:self.imuRollThresholdDegrees forKey:CDSettingsIMURollThresholdDegreesKey];
     [defaults setDouble:self.imuAngularSpeedThresholdDegreesPerSecond forKey:CDSettingsIMUAngularSpeedThresholdDegreesPerSecondKey];
@@ -166,8 +196,9 @@ NSString * const CDSettingsBlurSoftThresholdKey = @"CDSettingsBlurSoftThreshold"
 - (void)resetTapped {
     // Reset to default values
     self.cameraLens = 0;      // 超广角 (0.5x)
-    self.resolution = 1;      // 1080P
+    self.resolution = 1080;   // 1080P
     self.frameRate = 30;      // 30 fps
+    self.videoBitrateKbps = 3000; // 3000 kbps
     self.whiteBalance = 4500;  // 4500K
     self.shutterSpeed = 250;   // 1/250
     self.iso = 320;           // ISO 320
@@ -194,7 +225,7 @@ NSString * const CDSettingsBlurSoftThresholdKey = @"CDSettingsBlurSoftThreshold"
 #pragma mark - UITableViewDataSource
 
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
-    return 8;
+    return 9;
 }
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
@@ -204,9 +235,10 @@ NSString * const CDSettingsBlurSoftThresholdKey = @"CDSettingsBlurSoftThreshold"
         case 2: return 1;
         case 3: return 1;
         case 4: return 1;
-        case 5: return (self.exposureMode == 2) ? 4 : 2;
-        case 6: return self.imuSectionExpanded ? 4 : 0;
-        case 7: return self.qualitySectionExpanded ? 2 : 0;
+        case 5: return 1;
+        case 6: return (self.exposureMode == 2) ? 4 : 2;
+        case 7: return self.imuSectionExpanded ? 4 : 0;
+        case 8: return self.qualitySectionExpanded ? 2 : 0;
         default: return 0;
     }
 }
@@ -216,22 +248,23 @@ NSString * const CDSettingsBlurSoftThresholdKey = @"CDSettingsBlurSoftThreshold"
         case 0: return @"摄像头";
         case 1: return @"分辨率";
         case 2: return @"帧率";
-        case 3: return @"白平衡 (K)";
-        case 4:
+        case 3: return @"码率";
+        case 4: return @"白平衡 (K)";
+        case 5:
             if (self.exposureMode == 0) return @"快门速度";
             return @"快门速度上限 (防拖影)";
-        case 5: return @"曝光/ISO";
+        case 6: return @"曝光/ISO";
         default: return nil;
     }
 }
 
 - (UIView *)tableView:(UITableView *)tableView viewForHeaderInSection:(NSInteger)section {
-    if (section < 6) {
+    if (section < 7) {
         return nil;
     }
 
-    NSString *title = section == 6 ? @"IMU 限制" : @"画面质量";
-    BOOL expanded = (section == 6) ? self.imuSectionExpanded : self.qualitySectionExpanded;
+    NSString *title = section == 7 ? @"IMU 限制" : @"画面质量";
+    BOOL expanded = (section == 7) ? self.imuSectionExpanded : self.qualitySectionExpanded;
 
     UIControl *container = [[UIControl alloc] initWithFrame:CGRectZero];
     container.backgroundColor = [UIColor clearColor];
@@ -265,7 +298,7 @@ NSString * const CDSettingsBlurSoftThresholdKey = @"CDSettingsBlurSoftThreshold"
 }
 
 - (CGFloat)tableView:(UITableView *)tableView heightForHeaderInSection:(NSInteger)section {
-    return section < 6 ? 28.0 : 44.0;
+    return section < 7 ? 28.0 : 44.0;
 }
 
 - (CGFloat)tableView:(UITableView *)tableView heightForFooterInSection:(NSInteger)section {
@@ -294,8 +327,7 @@ NSString * const CDSettingsBlurSoftThresholdKey = @"CDSettingsBlurSoftThreshold"
     } else if (indexPath.section == 1) {
         // Resolution
         cell.textLabel.text = @"分辨率";
-        NSArray *resolutions = @[@"720P", @"1080P", @"4K"];
-        cell.detailTextLabel.text = resolutions[self.resolution];
+        cell.detailTextLabel.text = [NSString stringWithFormat:@"%ldP", (long)self.resolution];
         cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
     } else if (indexPath.section == 2) {
         // Frame rate
@@ -307,6 +339,10 @@ NSString * const CDSettingsBlurSoftThresholdKey = @"CDSettingsBlurSoftThreshold"
         cell.detailTextLabel.text = rates[idx];
         cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
     } else if (indexPath.section == 3) {
+        cell.textLabel.text = @"码率";
+        cell.detailTextLabel.text = [self bitrateDisplayText];
+        cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+    } else if (indexPath.section == 4) {
         // White balance
         cell.textLabel.text = [NSString stringWithFormat:@"%.0fK", self.whiteBalance];
 
@@ -323,7 +359,7 @@ NSString * const CDSettingsBlurSoftThresholdKey = @"CDSettingsBlurSoftThreshold"
             [stepper.centerYAnchor constraintEqualToAnchor:cell.contentView.centerYAnchor],
             [stepper.rightAnchor constraintEqualToAnchor:cell.contentView.rightAnchor constant:-16],
         ]];
-    } else if (indexPath.section == 4) {
+    } else if (indexPath.section == 5) {
         // Shutter speed
         if (self.exposureMode == 0) {
             cell.textLabel.text = [NSString stringWithFormat:@"1/%.0f", self.shutterSpeed];
@@ -344,7 +380,7 @@ NSString * const CDSettingsBlurSoftThresholdKey = @"CDSettingsBlurSoftThreshold"
             [stepper.centerYAnchor constraintEqualToAnchor:cell.contentView.centerYAnchor],
             [stepper.rightAnchor constraintEqualToAnchor:cell.contentView.rightAnchor constant:-16],
         ]];
-    } else if (indexPath.section == 5) {
+    } else if (indexPath.section == 6) {
         if (indexPath.row == 0) {
             cell.textLabel.text = @"曝光策略";
             cell.detailTextLabel.text = [self exposureModeName:self.exposureMode];
@@ -408,7 +444,7 @@ NSString * const CDSettingsBlurSoftThresholdKey = @"CDSettingsBlurSoftThreshold"
                 cell.textLabel.textColor = [UIColor systemGrayColor];
             }
         }
-    } else if (indexPath.section == 6) {
+    } else if (indexPath.section == 7) {
         if (indexPath.row == 0) {
             cell.textLabel.text = [NSString stringWithFormat:@"俯仰角阈值 %.0f°", self.imuPitchThresholdDegrees];
             UIStepper *stepper = [[UIStepper alloc] init];
@@ -470,7 +506,7 @@ NSString * const CDSettingsBlurSoftThresholdKey = @"CDSettingsBlurSoftThreshold"
                 [stepper.rightAnchor constraintEqualToAnchor:cell.contentView.rightAnchor constant:-16],
             ]];
         }
-    } else if (indexPath.section == 7) {
+    } else if (indexPath.section == 8) {
         if (indexPath.row == 0) {
             cell.textLabel.text = [NSString stringWithFormat:@"清晰阈值 %.0f", self.blurClearThreshold];
             UIStepper *stepper = [[UIStepper alloc] init];
@@ -509,53 +545,53 @@ NSString * const CDSettingsBlurSoftThresholdKey = @"CDSettingsBlurSoftThreshold"
 
 - (void)sectionHeaderTapped:(UIControl *)sender {
     NSInteger section = sender.tag - 600;
-    if (section == 6) {
+    if (section == 7) {
         self.imuSectionExpanded = !self.imuSectionExpanded;
-        [self.tableView reloadSections:[NSIndexSet indexSetWithIndex:6] withRowAnimation:UITableViewRowAnimationAutomatic];
-    } else if (section == 7) {
-        self.qualitySectionExpanded = !self.qualitySectionExpanded;
         [self.tableView reloadSections:[NSIndexSet indexSetWithIndex:7] withRowAnimation:UITableViewRowAnimationAutomatic];
+    } else if (section == 8) {
+        self.qualitySectionExpanded = !self.qualitySectionExpanded;
+        [self.tableView reloadSections:[NSIndexSet indexSetWithIndex:8] withRowAnimation:UITableViewRowAnimationAutomatic];
     }
 }
 
 - (void)whiteBalanceChanged:(UIStepper *)stepper {
     self.whiteBalance = stepper.value;
-    [self.tableView reloadRowsAtIndexPaths:@[[NSIndexPath indexPathForRow:0 inSection:3]] withRowAnimation:UITableViewRowAnimationNone];
+    [self.tableView reloadRowsAtIndexPaths:@[[NSIndexPath indexPathForRow:0 inSection:4]] withRowAnimation:UITableViewRowAnimationNone];
 }
 
 - (void)shutterSpeedChanged:(UIStepper *)stepper {
     self.shutterSpeed = stepper.value;
-    [self.tableView reloadRowsAtIndexPaths:@[[NSIndexPath indexPathForRow:0 inSection:4]] withRowAnimation:UITableViewRowAnimationNone];
+    [self.tableView reloadRowsAtIndexPaths:@[[NSIndexPath indexPathForRow:0 inSection:5]] withRowAnimation:UITableViewRowAnimationNone];
 }
 
 - (void)isoChanged:(UIStepper *)stepper {
     self.iso = stepper.value;
-    [self.tableView reloadRowsAtIndexPaths:@[[NSIndexPath indexPathForRow:1 inSection:5]] withRowAnimation:UITableViewRowAnimationNone];
+    [self.tableView reloadRowsAtIndexPaths:@[[NSIndexPath indexPathForRow:1 inSection:6]] withRowAnimation:UITableViewRowAnimationNone];
 }
 
 - (void)autoLockSettleChanged:(UIStepper *)stepper {
     self.autoLockSettleSeconds = stepper.value;
-    [self.tableView reloadRowsAtIndexPaths:@[[NSIndexPath indexPathForRow:2 inSection:5]] withRowAnimation:UITableViewRowAnimationNone];
+    [self.tableView reloadRowsAtIndexPaths:@[[NSIndexPath indexPathForRow:2 inSection:6]] withRowAnimation:UITableViewRowAnimationNone];
 }
 
 - (void)imuPitchThresholdChanged:(UIStepper *)stepper {
     self.imuPitchThresholdDegrees = stepper.value;
-    [self.tableView reloadRowsAtIndexPaths:@[[NSIndexPath indexPathForRow:0 inSection:6]] withRowAnimation:UITableViewRowAnimationNone];
+    [self.tableView reloadRowsAtIndexPaths:@[[NSIndexPath indexPathForRow:0 inSection:7]] withRowAnimation:UITableViewRowAnimationNone];
 }
 
 - (void)imuRollThresholdChanged:(UIStepper *)stepper {
     self.imuRollThresholdDegrees = stepper.value;
-    [self.tableView reloadRowsAtIndexPaths:@[[NSIndexPath indexPathForRow:1 inSection:6]] withRowAnimation:UITableViewRowAnimationNone];
+    [self.tableView reloadRowsAtIndexPaths:@[[NSIndexPath indexPathForRow:1 inSection:7]] withRowAnimation:UITableViewRowAnimationNone];
 }
 
 - (void)imuAngularSpeedThresholdChanged:(UIStepper *)stepper {
     self.imuAngularSpeedThresholdDegreesPerSecond = stepper.value;
-    [self.tableView reloadRowsAtIndexPaths:@[[NSIndexPath indexPathForRow:2 inSection:6]] withRowAnimation:UITableViewRowAnimationNone];
+    [self.tableView reloadRowsAtIndexPaths:@[[NSIndexPath indexPathForRow:2 inSection:7]] withRowAnimation:UITableViewRowAnimationNone];
 }
 
 - (void)imuMovementThresholdChanged:(UIStepper *)stepper {
     self.imuMovementSpeedThresholdMetersPerSecond = stepper.value;
-    [self.tableView reloadRowsAtIndexPaths:@[[NSIndexPath indexPathForRow:3 inSection:6]] withRowAnimation:UITableViewRowAnimationNone];
+    [self.tableView reloadRowsAtIndexPaths:@[[NSIndexPath indexPathForRow:3 inSection:7]] withRowAnimation:UITableViewRowAnimationNone];
 }
 
 - (void)blurClearThresholdChanged:(UIStepper *)stepper {
@@ -568,7 +604,7 @@ NSString * const CDSettingsBlurSoftThresholdKey = @"CDSettingsBlurSoftThreshold"
 
 - (void)blurSoftThresholdChanged:(UIStepper *)stepper {
     self.blurSoftThreshold = MIN(stepper.value, self.blurClearThreshold - 1.0);
-    [self.tableView reloadRowsAtIndexPaths:@[[NSIndexPath indexPathForRow:1 inSection:7]] withRowAnimation:UITableViewRowAnimationNone];
+    [self.tableView reloadRowsAtIndexPaths:@[[NSIndexPath indexPathForRow:1 inSection:8]] withRowAnimation:UITableViewRowAnimationNone];
 }
 
 #pragma mark - UITableViewDelegate
@@ -582,9 +618,30 @@ NSString * const CDSettingsBlurSoftThresholdKey = @"CDSettingsBlurSoftThreshold"
         [self showResolutionPicker];
     } else if (indexPath.section == 2) {
         [self showFrameRatePicker];
-    } else if (indexPath.section == 5 && indexPath.row == 0) {
+    } else if (indexPath.section == 3) {
+        [self showVideoBitratePicker];
+    } else if (indexPath.section == 6 && indexPath.row == 0) {
         [self showExposureModePicker];
     }
+}
+
+- (void)showVideoBitratePicker {
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"选择码率"
+                                                                   message:nil
+                                                            preferredStyle:UIAlertControllerStyleActionSheet];
+    NSArray<NSNumber *> *values = @[@0, @1500, @3000, @6000, @10000];
+    for (NSNumber *value in values) {
+        NSString *title = value.integerValue <= 0 ? @"自适应" : [NSString stringWithFormat:@"%@ kbps", value];
+        UIAlertAction *action = [UIAlertAction actionWithTitle:title
+                                                         style:UIAlertActionStyleDefault
+                                                       handler:^(UIAlertAction *action) {
+            self.videoBitrateKbps = value.integerValue;
+            [self.tableView reloadData];
+        }];
+        [alert addAction:action];
+    }
+    [alert addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
+    [self presentViewController:alert animated:YES completion:nil];
 }
 
 - (void)showExposureModePicker {
@@ -628,12 +685,13 @@ NSString * const CDSettingsBlurSoftThresholdKey = @"CDSettingsBlurSoftThreshold"
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"选择分辨率"
                                                                    message:nil
                                                             preferredStyle:UIAlertControllerStyleActionSheet];
-    NSArray *resolutions = @[@"720P", @"1080P", @"4K"];
-    for (NSInteger i = 0; i < resolutions.count; i++) {
-        UIAlertAction *action = [UIAlertAction actionWithTitle:resolutions[i]
+    NSArray<NSNumber *> *resolutions = @[@540, @720, @1080];
+    for (NSNumber *resolution in resolutions) {
+        NSString *title = [NSString stringWithFormat:@"%@P", resolution];
+        UIAlertAction *action = [UIAlertAction actionWithTitle:title
                                                          style:UIAlertActionStyleDefault
                                                        handler:^(UIAlertAction *action) {
-            self.resolution = i;
+            self.resolution = resolution.integerValue;
             [self.tableView reloadData];
         }];
         [alert addAction:action];

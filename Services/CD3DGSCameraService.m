@@ -31,6 +31,8 @@ NSString * const CD3DGSCameraRecordingURLKey = @"CD3DGSCameraRecordingURLKey";
 @property (nonatomic, assign) NSInteger exposureMode;
 @property (nonatomic, assign) NSTimeInterval autoLockSettleSeconds;
 @property (nonatomic, assign) NSInteger currentCameraLens;
+@property (nonatomic, assign) NSInteger videoBitrateKbps;
+@property (nonatomic, assign) NSInteger resolutionHeight;
 @property (nonatomic, assign) NSUInteger exposureAutoLockGeneration;
 
 @property (nonatomic, assign) BOOL parametersLocked;
@@ -119,15 +121,21 @@ NSString * const CD3DGSCameraRecordingURLKey = @"CD3DGSCameraRecordingURLKey";
     if (_autoLockSettleSeconds <= 0) _autoLockSettleSeconds = 1.0;
 
     _currentCameraLens = [defaults integerForKey:@"CDSettingsCameraLens"];
+
+    id bitrateObj = [defaults objectForKey:CDSettingsVideoBitrateKbpsKey];
+    _videoBitrateKbps = bitrateObj ? [defaults integerForKey:CDSettingsVideoBitrateKbpsKey] : 3000;
+    _resolutionHeight = [self normalizedResolutionHeightFromDefaults:defaults];
     [self applyBlurMonitorConfiguration];
 }
 
 - (void)settingsDidChange:(NSNotification *)notification {
     NSInteger oldLens = self.currentCameraLens;
+    NSInteger oldResolutionHeight = self.resolutionHeight;
     [self loadSettings];
     NSInteger newLens = self.currentCameraLens;
+    NSInteger newResolutionHeight = self.resolutionHeight;
 
-    if (oldLens != newLens) {
+    if (oldLens != newLens || oldResolutionHeight != newResolutionHeight) {
         [self reloadCamera];
     } else if (self.captureSession && self.videoDevice) {
         dispatch_async(dispatch_get_main_queue(), ^{
@@ -159,6 +167,7 @@ NSString * const CD3DGSCameraRecordingURLKey = @"CD3DGSCameraRecordingURLKey";
         }
 
         [self.captureSession beginConfiguration];
+        [self applyResolutionPresetToSession:self.captureSession];
         if ([self.captureSession canAddInput:newInput]) {
             [self.captureSession addInput:newInput];
         }
@@ -186,14 +195,46 @@ NSString * const CD3DGSCameraRecordingURLKey = @"CD3DGSCameraRecordingURLKey";
     self.blurMonitor.softThreshold = softThreshold > 0 ? softThreshold : 20.0;
 }
 
+- (NSInteger)normalizedResolutionHeightFromDefaults:(NSUserDefaults *)defaults {
+    id value = [defaults objectForKey:@"CDSettingsResolution"];
+    if (!value) {
+        return 1080;
+    }
+
+    NSInteger raw = [defaults integerForKey:@"CDSettingsResolution"];
+    if (raw == 540 || raw == 720 || raw == 1080) {
+        return raw;
+    }
+    if (raw == 0) return 720;
+    if (raw == 1) return 1080;
+    if (raw == 2) return 1080;
+    return 1080;
+}
+
+- (NSString *)sessionPresetForResolutionHeight:(NSInteger)resolutionHeight {
+    if (resolutionHeight == 540) {
+        return AVCaptureSessionPresetiFrame960x540;
+    }
+    if (resolutionHeight == 720) {
+        return AVCaptureSessionPreset1280x720;
+    }
+    return AVCaptureSessionPreset1920x1080;
+}
+
+- (void)applyResolutionPresetToSession:(AVCaptureSession *)session {
+    NSString *preset = [self sessionPresetForResolutionHeight:self.resolutionHeight];
+    if ([session canSetSessionPreset:preset]) {
+        session.sessionPreset = preset;
+    } else if ([session canSetSessionPreset:AVCaptureSessionPreset1920x1080]) {
+        session.sessionPreset = AVCaptureSessionPreset1920x1080;
+    }
+}
+
 - (AVCaptureVideoPreviewLayer *)setupCamera {
     AVCaptureSession *session = [[AVCaptureSession alloc] init];
     [session beginConfiguration];
 
-    // Keep consistent with existing demo capability (1080P preset).
-    if ([session canSetSessionPreset:AVCaptureSessionPreset1920x1080]) {
-        session.sessionPreset = AVCaptureSessionPreset1920x1080;
-    }
+    [self applyResolutionPresetToSession:session];
 
     AVCaptureDevice *device = [self findCameraDevice];
     if (!device) {
@@ -411,8 +452,8 @@ NSString * const CD3DGSCameraRecordingURLKey = @"CD3DGSCameraRecordingURLKey";
 
     [device unlockForConfiguration];
 
-    NSLog(@"3DGS camera configured: 1920x1080, %dfps, WB=%.0fK, exposureMode=%ld",
-          resolvedFrameRate, self.whiteBalanceTemperature, (long)self.exposureMode);
+    NSLog(@"3DGS camera configured: %ldP, %dfps, WB=%.0fK, exposureMode=%ld",
+          (long)self.resolutionHeight, resolvedFrameRate, self.whiteBalanceTemperature, (long)self.exposureMode);
 }
 
 - (void)startSession {
@@ -437,6 +478,31 @@ NSString * const CD3DGSCameraRecordingURLKey = @"CD3DGSCameraRecordingURLKey";
     return [self.videoOutput isRecording];
 }
 
+- (void)applyVideoOutputSettings {
+    AVCaptureConnection *videoConnection = nil;
+    for (AVCaptureConnection *connection in self.videoOutput.connections) {
+        for (AVCaptureInputPort *port in connection.inputPorts) {
+            if ([port.mediaType isEqualToString:AVMediaTypeVideo]) {
+                videoConnection = connection;
+                break;
+            }
+        }
+        if (videoConnection) {
+            break;
+        }
+    }
+    if (!videoConnection) {
+        return;
+    }
+
+    NSMutableDictionary *outputSettings = [@{ AVVideoCodecKey : AVVideoCodecTypeH264 } mutableCopy];
+    if (self.videoBitrateKbps > 0) {
+        NSInteger bitrate = self.videoBitrateKbps * 1000;
+        outputSettings[AVVideoCompressionPropertiesKey] = @{ AVVideoAverageBitRateKey : @(bitrate) };
+    }
+    [self.videoOutput setOutputSettings:outputSettings forConnection:videoConnection];
+}
+
 - (void)startRecording {
     if ([self.videoOutput isRecording]) {
         return;
@@ -446,6 +512,7 @@ NSString * const CD3DGSCameraRecordingURLKey = @"CD3DGSCameraRecordingURLKey";
     }
 
     [self resetBlurAnalysis];
+    [self applyVideoOutputSettings];
 
     NSURL *videosDir = [self getVideoDirectory];
     [[NSFileManager defaultManager] createDirectoryAtURL:videosDir

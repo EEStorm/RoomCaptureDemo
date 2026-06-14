@@ -9,6 +9,7 @@ FOUNDATION_EXPORT NSString * const CDSettingsIMUAngularSpeedThresholdDegreesPerS
 FOUNDATION_EXPORT NSString * const CDSettingsIMUMovementSpeedThresholdMetersPerSecondKey;
 FOUNDATION_EXPORT NSString * const CDSettingsBlurClearThresholdKey;
 FOUNDATION_EXPORT NSString * const CDSettingsBlurSoftThresholdKey;
+FOUNDATION_EXPORT NSString * const CDSettingsVideoBitrateKbpsKey;
 
 @interface CDCameraSettingsViewController : UIViewController
 

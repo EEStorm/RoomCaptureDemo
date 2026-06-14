@@ -17,6 +17,7 @@
 @property (nonatomic, assign) NSInteger exposureMode;
 @property (nonatomic, assign) NSTimeInterval autoLockSettleSeconds;
 @property (nonatomic, assign) NSInteger currentCameraLens;
+@property (nonatomic, assign) NSInteger resolutionHeight;
 @property (nonatomic, assign) NSUInteger exposureAutoLockGeneration;
 
 @end
@@ -72,14 +73,17 @@
     if (_autoLockSettleSeconds <= 0) _autoLockSettleSeconds = 1.0;
 
     _currentCameraLens = [defaults integerForKey:@"CDSettingsCameraLens"];
+    _resolutionHeight = [self normalizedResolutionHeightFromDefaults:defaults];
 }
 
 - (void)settingsDidChange:(NSNotification *)notification {
     NSInteger oldLens = self.currentCameraLens;
+    NSInteger oldResolutionHeight = self.resolutionHeight;
     [self loadSettings];
     NSInteger newLens = self.currentCameraLens;
+    NSInteger newResolutionHeight = self.resolutionHeight;
 
-    if (oldLens != newLens) {
+    if (oldLens != newLens || oldResolutionHeight != newResolutionHeight) {
         // Camera lens changed, need to reload camera
         [self reloadCamera];
     } else if (self.captureSession && self.videoDevice) {
@@ -116,6 +120,7 @@
         }
 
         [self.captureSession beginConfiguration];
+        [self applyResolutionPresetToSession:self.captureSession];
 
         if ([self.captureSession canAddInput:newInput]) {
             [self.captureSession addInput:newInput];
@@ -139,13 +144,46 @@
     [[NSNotificationCenter defaultCenter] removeObserver:self];
 }
 
+- (NSInteger)normalizedResolutionHeightFromDefaults:(NSUserDefaults *)defaults {
+    id value = [defaults objectForKey:@"CDSettingsResolution"];
+    if (!value) {
+        return 1080;
+    }
+
+    NSInteger raw = [defaults integerForKey:@"CDSettingsResolution"];
+    if (raw == 540 || raw == 720 || raw == 1080) {
+        return raw;
+    }
+    if (raw == 0) return 720;
+    if (raw == 1) return 1080;
+    if (raw == 2) return 1080;
+    return 1080;
+}
+
+- (NSString *)sessionPresetForResolutionHeight:(NSInteger)resolutionHeight {
+    if (resolutionHeight == 540) {
+        return AVCaptureSessionPresetiFrame960x540;
+    }
+    if (resolutionHeight == 720) {
+        return AVCaptureSessionPreset1280x720;
+    }
+    return AVCaptureSessionPreset1920x1080;
+}
+
+- (void)applyResolutionPresetToSession:(AVCaptureSession *)session {
+    NSString *preset = [self sessionPresetForResolutionHeight:self.resolutionHeight];
+    if ([session canSetSessionPreset:preset]) {
+        session.sessionPreset = preset;
+    } else if ([session canSetSessionPreset:AVCaptureSessionPreset1920x1080]) {
+        session.sessionPreset = AVCaptureSessionPreset1920x1080;
+    }
+}
+
 - (AVCaptureVideoPreviewLayer *)setupCamera {
     AVCaptureSession *session = [[AVCaptureSession alloc] init];
     [session beginConfiguration];
 
-    if ([session canSetSessionPreset:AVCaptureSessionPreset1920x1080]) {
-        session.sessionPreset = AVCaptureSessionPreset1920x1080;
-    }
+    [self applyResolutionPresetToSession:session];
 
     AVCaptureDevice *device = [self findCameraDevice];
     if (!device) {
