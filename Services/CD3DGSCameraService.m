@@ -495,11 +495,42 @@ NSString * const CD3DGSCameraRecordingURLKey = @"CD3DGSCameraRecordingURLKey";
         return;
     }
 
-    NSMutableDictionary *outputSettings = [@{ AVVideoCodecKey : AVVideoCodecTypeH264 } mutableCopy];
-    if (self.videoBitrateKbps > 0) {
-        NSInteger bitrate = self.videoBitrateKbps * 1000;
-        outputSettings[AVVideoCompressionPropertiesKey] = @{ AVVideoAverageBitRateKey : @(bitrate) };
+    if (self.videoBitrateKbps <= 0) {
+        [self.videoOutput setOutputSettings:nil forConnection:videoConnection];
+        return;
     }
+
+    NSDictionary<NSString *, id> *defaultSettings = [self.videoOutput outputSettingsForConnection:videoConnection];
+    NSSet<NSString *> *supportedKeys = [NSSet setWithArray:[self.videoOutput supportedOutputSettingsKeysForConnection:videoConnection]];
+    if (![supportedKeys containsObject:AVVideoCodecKey] || ![supportedKeys containsObject:AVVideoCompressionPropertiesKey]) {
+        return;
+    }
+
+    NSMutableDictionary<NSString *, id> *outputSettings = [NSMutableDictionary dictionary];
+    [defaultSettings enumerateKeysAndObjectsUsingBlock:^(NSString *key, id obj, BOOL *stop) {
+        if ([supportedKeys containsObject:key]) {
+            outputSettings[key] = obj;
+        }
+    }];
+
+    if (!outputSettings[AVVideoCodecKey]) {
+        AVVideoCodecType defaultCodec = self.videoOutput.availableVideoCodecTypes.firstObject;
+        if (defaultCodec) {
+            outputSettings[AVVideoCodecKey] = defaultCodec;
+        }
+    }
+    if (!outputSettings[AVVideoCodecKey]) {
+        return;
+    }
+
+    NSMutableDictionary *compressionProperties = [NSMutableDictionary dictionary];
+    NSDictionary *defaultCompressionProperties = outputSettings[AVVideoCompressionPropertiesKey];
+    if ([defaultCompressionProperties isKindOfClass:[NSDictionary class]]) {
+        [compressionProperties addEntriesFromDictionary:defaultCompressionProperties];
+    }
+    NSInteger bitrate = self.videoBitrateKbps * 1000;
+    compressionProperties[AVVideoAverageBitRateKey] = @(bitrate);
+    outputSettings[AVVideoCompressionPropertiesKey] = compressionProperties;
     [self.videoOutput setOutputSettings:outputSettings forConnection:videoConnection];
 }
 
