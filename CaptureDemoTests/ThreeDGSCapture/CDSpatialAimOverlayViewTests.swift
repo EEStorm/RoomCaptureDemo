@@ -24,6 +24,18 @@ final class CDSpatialAimOverlayViewTests: XCTestCase {
         XCTAssertFalse(reticle?.isUserInteractionEnabled ?? true)
     }
 
+    func testAimPointUsesFixedSizeScreenViewInsteadOfPerspectiveGeometry() {
+        let overlay = CDSpatialAimOverlayView(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        let aimNodes = overlay.value(forKey: "aimNodes") as! [SCNNode]
+        let aimPointView = overlay.value(forKey: "aimPointView") as? UIView
+
+        XCTAssertNotNil(aimPointView)
+        XCTAssertEqual(aimPointView?.bounds.width ?? 0, 46, accuracy: 0.5)
+        XCTAssertEqual(aimPointView?.bounds.height ?? 0, 46, accuracy: 0.5)
+        XCTAssertFalse(aimPointView?.isUserInteractionEnabled ?? true)
+        XCTAssertTrue(aimNodes.allSatisfy { $0.geometry == nil })
+    }
+
     func testTurningPhoneMovesInitialAimPointOutOfCameraCenter() {
         let overlay = CDSpatialAimOverlayView(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
         let cameraNode = overlay.value(forKey: "cameraNode") as! SCNNode

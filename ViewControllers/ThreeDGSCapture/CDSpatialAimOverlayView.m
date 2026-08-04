@@ -8,6 +8,7 @@
 
 static const CGFloat CDSpatialAimDefaultHorizontalFieldOfView = 90.0;
 static const CGFloat CDSpatialAimCenterThresholdPoints = 28.0;
+static const CGFloat CDSpatialAimPointViewSize = 46.0;
 static const CGFloat CDSpatialAimCenterReticleSize = 54.0;
 
 static BOOL CDCoreMotionQuaternionTryNormalize(CMQuaternion quaternion, CMQuaternion *normalizedQuaternion) {
@@ -130,9 +131,45 @@ static BOOL CDCoreMotionRotationMatrixFromQuaternion(CMQuaternion quaternion, CM
 
 @end
 
+@interface CDSpatialAimPointView : UIView
+@end
+
+@implementation CDSpatialAimPointView
+
+- (instancetype)initWithFrame:(CGRect)frame {
+    self = [super initWithFrame:frame];
+    if (self) {
+        self.backgroundColor = [UIColor clearColor];
+        self.opaque = NO;
+        self.userInteractionEnabled = NO;
+        self.contentMode = UIViewContentModeRedraw;
+    }
+    return self;
+}
+
+- (void)drawRect:(CGRect)rect {
+    CGContextRef context = UIGraphicsGetCurrentContext();
+    if (!context) {
+        return;
+    }
+
+    CGRect circleRect = CGRectInset(self.bounds, 1.0, 1.0);
+    UIColor *fillColor = [UIColor colorWithRed:1.0 green:0.48 blue:0.05 alpha:0.95];
+    UIColor *shadowColor = [UIColor colorWithWhite:0.0 alpha:0.32];
+
+    CGContextSaveGState(context);
+    CGContextSetShadowWithColor(context, CGSizeMake(0.0, 2.0), 4.0, shadowColor.CGColor);
+    CGContextSetFillColorWithColor(context, fillColor.CGColor);
+    CGContextFillEllipseInRect(context, circleRect);
+    CGContextRestoreGState(context);
+}
+
+@end
+
 @interface CDSpatialAimOverlayView ()
 
 @property (nonatomic, strong) SCNView *sceneView;
+@property (nonatomic, strong) UIView *aimPointView;
 @property (nonatomic, strong) UIView *centerReticleView;
 @property (nonatomic, strong) SCNNode *cameraNode;
 @property (nonatomic, strong) SCNNode *aimRootNode;
@@ -183,6 +220,11 @@ static BOOL CDCoreMotionRotationMatrixFromQuaternion(CMQuaternion quaternion, CM
     sceneView.preferredFramesPerSecond = 60;
     [self addSubview:sceneView];
     self.sceneView = sceneView;
+
+    UIView *aimPointView = [[CDSpatialAimPointView alloc] initWithFrame:CGRectMake(0.0, 0.0, CDSpatialAimPointViewSize, CDSpatialAimPointViewSize)];
+    aimPointView.hidden = YES;
+    [self addSubview:aimPointView];
+    self.aimPointView = aimPointView;
 
     UIView *centerReticleView = [[CDSpatialAimCenterReticleView alloc] initWithFrame:CGRectMake(0.0, 0.0, CDSpatialAimCenterReticleSize, CDSpatialAimCenterReticleSize)];
     centerReticleView.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin |
@@ -264,29 +306,18 @@ static BOOL CDCoreMotionRotationMatrixFromQuaternion(CMQuaternion quaternion, CM
 - (void)layoutSubviews {
     [super layoutSubviews];
     self.sceneView.frame = self.bounds;
+    self.aimPointView.bounds = CGRectMake(0.0, 0.0, CDSpatialAimPointViewSize, CDSpatialAimPointViewSize);
     self.centerReticleView.bounds = CGRectMake(0.0, 0.0, CDSpatialAimCenterReticleSize, CDSpatialAimCenterReticleSize);
     self.centerReticleView.center = CGPointMake(CGRectGetMidX(self.bounds), CGRectGetMidY(self.bounds));
+    [self bringSubviewToFront:self.aimPointView];
     [self bringSubviewToFront:self.centerReticleView];
 }
 
 - (void)rebuildAimNodes {
     NSMutableArray<SCNNode *> *nodes = [NSMutableArray arrayWithCapacity:self.sequence.positions.count];
-    UIColor *aimColor = [UIColor colorWithRed:1.0 green:0.48 blue:0.05 alpha:0.95];
     for (NSValue *value in self.sequence.positions) {
-        SCNPlane *plane = [SCNPlane planeWithWidth:0.46 height:0.46];
-        plane.cornerRadius = 0.23;
-        SCNMaterial *material = [SCNMaterial material];
-        material.lightingModelName = SCNLightingModelConstant;
-        material.diffuse.contents = aimColor;
-        material.emission.contents = aimColor;
-        material.doubleSided = YES;
-        plane.firstMaterial = material;
-
-        SCNNode *node = [SCNNode nodeWithGeometry:plane];
+        SCNNode *node = [SCNNode node];
         node.position = value.SCNVector3Value;
-        SCNBillboardConstraint *billboard = [SCNBillboardConstraint billboardConstraint];
-        billboard.freeAxes = SCNBillboardAxisAll;
-        node.constraints = @[billboard];
         [nodes addObject:node];
     }
     self.aimNodes = [nodes copy];
@@ -303,6 +334,9 @@ static BOOL CDCoreMotionRotationMatrixFromQuaternion(CMQuaternion quaternion, CM
     node.scale = SCNVector3Make(1.0, 1.0, 1.0);
     [self.aimRootNode addChildNode:node];
     self.currentNode = node;
+    self.aimPointView.alpha = 1.0;
+    self.aimPointView.transform = CGAffineTransformIdentity;
+    self.aimPointView.hidden = YES;
     self.advancementAnimationInProgress = NO;
 }
 
@@ -351,6 +385,7 @@ static BOOL CDCoreMotionRotationMatrixFromQuaternion(CMQuaternion quaternion, CM
     self.hasValidAttitude = NO;
     self.initialCoreMotionRotationMatrix = (CMRotationMatrix){ 1, 0, 0, 0, 1, 0, 0, 0, 1 };
     self.cameraNode.transform = SCNMatrix4Identity;
+    self.aimPointView.hidden = YES;
     self.hidden = YES;
     [self.sequence updateCentered:NO timestamp:0.0];
 }
@@ -385,6 +420,7 @@ static BOOL CDCoreMotionRotationMatrixFromQuaternion(CMQuaternion quaternion, CM
 - (void)stopRendering {
     self.rendering = NO;
     self.hidden = YES;
+    self.aimPointView.hidden = YES;
     [self.displayLink invalidate];
     self.displayLink = nil;
     self.sceneView.playing = NO;
@@ -396,6 +432,7 @@ static BOOL CDCoreMotionRotationMatrixFromQuaternion(CMQuaternion quaternion, CM
     SCNNode *node = self.currentNode;
     if (!self.hasValidAttitude || !node || self.advancementAnimationInProgress || !self.isAdvancementEnabled) {
         [self.sequence updateCentered:NO timestamp:displayLink.timestamp];
+        self.aimPointView.hidden = YES;
         return;
     }
 
@@ -405,24 +442,28 @@ static BOOL CDCoreMotionRotationMatrixFromQuaternion(CMQuaternion quaternion, CM
     CGFloat dx = projected.x - size.width * 0.5;
     CGFloat dy = projected.y - size.height * 0.5;
     BOOL visibleDepth = projected.z >= 0.0 && projected.z <= 1.0;
+    self.aimPointView.hidden = !visibleDepth;
+    if (visibleDepth) {
+        self.aimPointView.center = CGPointMake(projected.x, projected.y);
+        self.aimPointView.bounds = CGRectMake(0.0, 0.0, CDSpatialAimPointViewSize, CDSpatialAimPointViewSize);
+    }
+
     BOOL centered = visibleDepth && hypot(dx, dy) <= CDSpatialAimCenterThresholdPoints;
     if (![self.sequence updateCentered:centered timestamp:displayLink.timestamp]) {
         return;
     }
 
     self.advancementAnimationInProgress = YES;
-    SCNAction *finishAction = [SCNAction group:@[
-        [SCNAction scaleTo:0.25 duration:0.18],
-        [SCNAction fadeOutWithDuration:0.18]
-    ]];
-    [node runAction:finishAction completionHandler:^{
-        dispatch_async(dispatch_get_main_queue(), ^{
-            [node removeFromParentNode];
-            if (self.currentNode == node) {
-                self.currentNode = nil;
-            }
-            [self revealCurrentNode];
-        });
+    [UIView animateWithDuration:0.18
+                     animations:^{
+        self.aimPointView.alpha = 0.0;
+        self.aimPointView.transform = CGAffineTransformMakeScale(0.25, 0.25);
+    } completion:^(BOOL finished) {
+        [node removeFromParentNode];
+        if (self.currentNode == node) {
+            self.currentNode = nil;
+        }
+        [self revealCurrentNode];
     }];
 }
 
