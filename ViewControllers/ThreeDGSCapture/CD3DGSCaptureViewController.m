@@ -3,6 +3,8 @@
 #import "CD3DGSCameraService.h"
 #import "CD3DGSVideoListViewController.h"
 #import "CDCameraSettingsViewController.h"
+#import "CDMotionTrackingService.h"
+#import "CDSpatialAimOverlayView.h"
 #import "../RoomShootFlow/CDRoomItem.h"
 #import "../RoomShootFlow/CDRoomVideoReviewViewController.h"
 #import "CDVideoStorageManager.h"
@@ -49,8 +51,10 @@
 @property (nonatomic, strong) AVPlayerLayer *guideVideoPlayerLayer;
 @property (nonatomic, strong) NSTimer *countdownTimer;
 @property (nonatomic, assign) NSInteger countdownValue;
-@property (nonatomic, strong) CMMotionManager *motionManager;
-@property (nonatomic, strong) NSOperationQueue *motionQueue;
+@property (nonatomic, strong) CDMotionTrackingService *motionTrackingService;
+@property (nonatomic, strong) CDSpatialAimOverlayView *spatialAimOverlayView;
+@property (nonatomic, assign) BOOL spatialAimPageVisible;
+@property (nonatomic, assign) BOOL motionGuidanceActive;
 @property (nonatomic, strong) UIView *imuTopLimitLineView;
 @property (nonatomic, strong) UIView *imuBottomLimitLineView;
 @property (nonatomic, strong) UIView *imuCrossView;
@@ -116,6 +120,7 @@
     self.stepGifCollapsed = NO;
     [self loadRuntimeThresholds];
     [self setupUI];
+    [self setupSpatialAimOverlay];
     [self setupCamera];
 
     __weak typeof(self) weakSelf = self;
@@ -132,10 +137,24 @@
     [[NSNotificationCenter defaultCenter] addObserver:self
                                              selector:@selector(recordingDidFinish:)
                                                  name:CD3DGSCameraDidFinishRecordingNotification
-                                              object:nil];
+                                               object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(applicationDidEnterBackground)
+                                                 name:UIApplicationDidEnterBackgroundNotification
+                                               object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(applicationWillEnterForeground)
+                                                 name:UIApplicationWillEnterForegroundNotification
+                                               object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(updateSpatialAimFieldOfView)
+                                                 name:@"CD3DGSCameraDidReload"
+                                               object:nil];
 }
 
 - (void)dealloc {
+    self.motionTrackingService.updateHandler = nil;
+    [self.motionTrackingService stop];
     [CD3DGSCameraService shared].blurStatusHandler = nil;
     [[NSNotificationCenter defaultCenter] removeObserver:self];
 }
@@ -149,6 +168,7 @@
     UIView *previewContainer1 = [self.view viewWithTag:100];
     previewContainer1.frame = self.view.bounds;
     self.previewLayer.frame = previewContainer1.bounds;
+    self.spatialAimOverlayView.frame = self.view.bounds;
     self.imuReservedContainerView.frame = self.view.bounds;
 
     self.topBar.frame = CGRectMake(0, safeTop, screenWidth, 96);
@@ -348,6 +368,7 @@
 
 - (void)viewWillAppear:(BOOL)animated {
     [super viewWillAppear:animated];
+    self.spatialAimPageVisible = YES;
     [self.navigationController setNavigationBarHidden:YES animated:animated];
     __weak typeof(self) weakSelf = self;
     [CD3DGSCameraService shared].blurStatusHandler = ^(NSInteger blurState, double blurVariance) {
@@ -356,13 +377,16 @@
         });
     };
     [[CD3DGSCameraService shared] startSession];
+    [self startSpatialAimTracking];
     [self startUITimer];
 }
 
 - (void)viewWillDisappear:(BOOL)animated {
     [super viewWillDisappear:animated];
+    self.spatialAimPageVisible = NO;
     [self.navigationController setNavigationBarHidden:NO animated:animated];
     [[CD3DGSCameraService shared] stopSession];
+    [self stopSpatialAimTracking];
     [CD3DGSCameraService shared].blurStatusHandler = nil;
     self.warningCoverageTrackingActive = NO;
     [self stopUITimer];
@@ -477,6 +501,84 @@
 
     [self updateRecordButton:NO];
     [self updateGuidanceUI];
+}
+
+- (void)setupSpatialAimOverlay {
+    self.spatialAimOverlayView = [[CDSpatialAimOverlayView alloc] initWithFrame:self.view.bounds];
+    self.spatialAimOverlayView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    self.spatialAimOverlayView.advancementEnabled = YES;
+    [self.view insertSubview:self.spatialAimOverlayView belowSubview:self.imuReservedContainerView];
+
+    self.motionTrackingService = [[CDMotionTrackingService alloc] init];
+}
+
+- (void)startSpatialAimTracking {
+    [self.spatialAimOverlayView reset];
+    [self resumeSpatialAimTracking];
+}
+
+- (void)resumeSpatialAimTracking {
+    [self.spatialAimOverlayView startRendering];
+    self.spatialAimOverlayView.advancementEnabled = self.guideVideoOverlayView.hidden;
+
+    __weak typeof(self) weakSelf = self;
+    self.motionTrackingService.updateHandler = ^(CMDeviceMotion *motion) {
+        __strong typeof(weakSelf) self = weakSelf;
+        if (!self) {
+            return;
+        }
+
+        [self.spatialAimOverlayView updateWithDeviceMotion:motion];
+        if (![self shouldUpdateMotionGuidance]) {
+            return;
+        }
+
+        double pitchDegrees = [self screenPitchDegreesForMotion:motion];
+        double rollDegrees = [self screenRollDegreesForMotion:motion];
+        CGFloat angularSpeed = [self angularSpeedDegreesPerSecondForMotion:motion];
+        CGFloat movementSpeed = [self movementSpeedMetersPerSecondForMotion:motion];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self updateAngularSpeedDegreesPerSecond:angularSpeed];
+            [self updateMovementSpeedMetersPerSecond:movementSpeed];
+            if ([self isPitchValidationEnabledForCurrentStep]) {
+                [self updatePitchIMUUIWithPitchDegrees:pitchDegrees];
+            } else {
+                [self disablePitchValidationUI];
+            }
+            [self updateRollIMUUIWithRollDegrees:rollDegrees];
+        });
+    };
+    [self.motionTrackingService start];
+}
+
+- (void)stopSpatialAimTracking {
+    self.motionTrackingService.updateHandler = nil;
+    [self.motionTrackingService stop];
+    [self.spatialAimOverlayView stopRendering];
+}
+
+- (void)applicationDidEnterBackground {
+    [self stopSpatialAimTracking];
+}
+
+- (void)applicationWillEnterForeground {
+    if (self.spatialAimPageVisible) {
+        [self.spatialAimOverlayView resetAttitudeCalibration];
+        [self resumeSpatialAimTracking];
+    }
+}
+
+- (void)updateSpatialAimFieldOfView {
+    for (AVCaptureInput *input in self.previewLayer.session.inputs) {
+        if (![input isKindOfClass:[AVCaptureDeviceInput class]]) {
+            continue;
+        }
+        CGFloat fieldOfView = ((AVCaptureDeviceInput *)input).device.activeFormat.videoFieldOfView;
+        if (fieldOfView > 1.0) {
+            self.spatialAimOverlayView.horizontalFieldOfView = fieldOfView;
+        }
+        break;
+    }
 }
 
 - (void)loadRuntimeThresholds {
@@ -1043,6 +1145,8 @@
             UIView *container = [self.view viewWithTag:100];
             [container.layer addSublayer:preview];
 
+            [self updateSpatialAimFieldOfView];
+
             [[CD3DGSCameraService shared] startSession];
             [self updateSettingsLabels];
         });
@@ -1092,19 +1196,10 @@
 }
 
 - (void)startPitchMonitoringIfNeeded {
-    if (self.motionManager.isDeviceMotionActive) {
+    if (self.motionGuidanceActive) {
         return;
     }
-    if (!self.motionManager) {
-        self.motionManager = [[CMMotionManager alloc] init];
-    }
-    if (!self.motionQueue) {
-        self.motionQueue = [[NSOperationQueue alloc] init];
-        self.motionQueue.maxConcurrentOperationCount = 1;
-    }
-    if (!self.motionManager.isDeviceMotionAvailable) {
-        return;
-    }
+    self.motionGuidanceActive = YES;
 
     BOOL pitchValidationEnabled = [self isPitchValidationEnabledForCurrentStep];
     self.imuTopLimitLineView.hidden = !pitchValidationEnabled;
@@ -1140,27 +1235,6 @@
     self.movementVelocityZ = 0;
     self.movementWarningActive = NO;
     [self.warningImpactFeedbackGenerator prepare];
-
-    self.motionManager.deviceMotionUpdateInterval = 1.0 / 30.0;
-    __weak typeof(self) weakSelf = self;
-    [self.motionManager startDeviceMotionUpdatesToQueue:self.motionQueue withHandler:^(CMDeviceMotion * _Nullable motion, NSError * _Nullable error) {
-        __strong typeof(weakSelf) self = weakSelf;
-        if (!self || !motion) return;
-        double pitchDegrees = [self screenPitchDegreesForMotion:motion];
-        double rollDegrees = [self screenRollDegreesForMotion:motion];
-        CGFloat angularSpeed = [self angularSpeedDegreesPerSecondForMotion:motion];
-        CGFloat movementSpeed = [self movementSpeedMetersPerSecondForMotion:motion];
-        dispatch_async(dispatch_get_main_queue(), ^{
-            [self updateAngularSpeedDegreesPerSecond:angularSpeed];
-            [self updateMovementSpeedMetersPerSecond:movementSpeed];
-            if ([self isPitchValidationEnabledForCurrentStep]) {
-                [self updatePitchIMUUIWithPitchDegrees:pitchDegrees];
-            } else {
-                [self disablePitchValidationUI];
-            }
-            [self updateRollIMUUIWithRollDegrees:rollDegrees];
-        });
-    }];
 }
 
 - (BOOL)isPitchValidationEnabledForCurrentStep {
@@ -1205,7 +1279,7 @@
 }
 
 - (void)stopPitchMonitoring {
-    [self.motionManager stopDeviceMotionUpdates];
+    self.motionGuidanceActive = NO;
     self.currentPitchDegrees = 0;
     self.currentPitchOffsetY = 0;
     self.pitchWarningActive = NO;
@@ -1253,7 +1327,7 @@
 }
 
 - (CGFloat)movementSpeedMetersPerSecondForMotion:(CMDeviceMotion *)motion {
-    CGFloat dt = self.motionManager.deviceMotionUpdateInterval > 0 ? self.motionManager.deviceMotionUpdateInterval : (1.0 / 30.0);
+    CGFloat dt = self.motionTrackingService.updateInterval > 0 ? self.motionTrackingService.updateInterval : (1.0 / 60.0);
     CGFloat ax = motion.userAcceleration.x * 9.81;
     CGFloat ay = motion.userAcceleration.y * 9.81;
     CGFloat az = motion.userAcceleration.z * 9.81;
@@ -1528,6 +1602,7 @@
 - (void)beginGuideVideoBeforeRecording {
     self.isPreparingToRecord = YES;
     self.isRecordingFlowActive = YES;
+    self.spatialAimOverlayView.advancementEnabled = NO;
     self.recordingDurationLabel.hidden = YES;
     [self updateGuidanceUI];
 
@@ -1628,6 +1703,7 @@
     self.guideVideoOverlayView.hidden = YES;
     self.guideVideoSkipButton.hidden = YES;
     self.countdownLabel.hidden = YES;
+    self.spatialAimOverlayView.advancementEnabled = YES;
     self.isStartingRecording = YES;
     self.recordingOverlaySuppressedUntil = [NSDate dateWithTimeIntervalSinceNow:0.45];
     self.toastContainerView.hidden = YES;
@@ -1658,6 +1734,7 @@
     self.guideVideoPlayerLayer = nil;
     self.guideVideoOverlayView.hidden = YES;
     self.guideVideoSkipButton.hidden = YES;
+    self.spatialAimOverlayView.advancementEnabled = YES;
     self.countdownLabel.hidden = YES;
     self.isStartingRecording = NO;
     self.recordingOverlaySuppressedUntil = nil;

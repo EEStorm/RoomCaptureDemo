@@ -2,6 +2,9 @@
 
 
 #import "CD3DGSCaptureGuidanceState.h"
+#import "CDSpatialAimSequence.h"
+#import "CDMotionTrackingService.h"
+#import "CDSpatialAimOverlayView.h"
 //  CaptureDemo-Bridging-Header.h
 //  CaptureDemo
 //
